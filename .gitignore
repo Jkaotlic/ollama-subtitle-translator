@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Кэш моделей
+cache/
+models/
+*.bin
+*.safetensors
+
+# Файлы субтитров (примеры)
+*.srt
+*.ass
+*.sub
+
+# Временные файлы
+uploads/
+outputs/
+*.tmp
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+ollama_data/

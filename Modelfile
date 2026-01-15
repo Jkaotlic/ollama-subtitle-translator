@@ -1,0 +1,6 @@
+FROM hf.co/tencent/HY-MT1.5-1.8B-GGUF:Q8_0
+TEMPLATE """<｜hy_begin▁of▁sentence｜>{{ if .System }}{{ .System }}<｜hy_place▁holder▁no▁3｜>{{ end }}{{ if .Prompt }}<｜hy_User｜>{{ .Prompt }}{{ end }}<｜hy_Assistant｜>"""
+PARAMETER top_k 20
+PARAMETER top_p 0.6
+PARAMETER repeat_penalty 1.05
+PARAMETER temperature 0.7
