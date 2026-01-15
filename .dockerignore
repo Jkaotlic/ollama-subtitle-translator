@@ -1,0 +1,37 @@
+# Docker files
+cache/
+uploads/
+outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.log
+
+# Subtitle files (not needed in image)
+*.srt
+*.ass
+*.sub
+
+# Model cache (will be downloaded on first run)
+*.bin
+*.safetensors

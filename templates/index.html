@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Переводчик субтитров</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+        h1 { text-align: center; margin-bottom: 30px; }
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .drop-zone {
+            border: 2px dashed #4a5568;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        .drop-zone.has-file {
+            border-color: #48bb78;
+            background: rgba(72, 187, 120, 0.1);
+        }
+        label { display: block; margin-bottom: 8px; font-weight: 500; }
+        select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #4a5568;
+            background: #0f3460;
+            color: #eee;
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        button:hover { transform: translateY(-2px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .progress-container { display: none; margin-top: 20px; }
+        .progress-bar {
+            height: 8px;
+            background: #4a5568;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text { text-align: center; font-size: 14px; color: #a0aec0; }
+        .download-btn {
+            display: none;
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            margin-top: 16px;
+        }
+        .status {
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            display: none;
+        }
+        .status.error { background: rgba(245, 101, 101, 0.2); color: #fc8181; }
+        .status.success { background: rgba(72, 187, 120, 0.2); color: #68d391; }
+        .emoji { font-size: 48px; margin-bottom: 12px; }
+        .file-name { color: #68d391; font-weight: 500; }
+        .info { font-size: 12px; color: #718096; text-align: center; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🎬 Переводчик субтитров</h1>
+    
+    <div class="card">
+        <div class="drop-zone" id="dropZone">
+            <div class="emoji">📁</div>
+            <div>Перетащите .srt файл сюда</div>
+            <div style="margin-top: 8px; color: #718096;">или нажмите для выбора</div>
+            <div class="file-name" id="fileName" style="display: none; margin-top: 12px;"></div>
+            <input type="file" id="fileInput" accept=".srt" style="display: none;">
+        </div>
+        
+        <label for="lang">Язык перевода:</label>
+        <select id="lang">
+            {% for lang in languages %}
+            <option value="{{ lang }}" {% if lang == 'Russian' %}selected{% endif %}>{{ lang }}</option>
+            {% endfor %}
+        </select>
+        
+        <button id="translateBtn" disabled>🚀 Перевести</button>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="progress-text" id="progressText">Подготовка...</div>
+        </div>
+        
+        <button class="download-btn" id="downloadBtn">💾 Скачать перевод</button>
+        <div class="status" id="status"></div>
+    </div>
+    
+    <div class="info">
+        Модель: HuanYuan MT 1.5 (Tencent) — победитель WMT25<br>
+        Поддержка 33 языков
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const translateBtn = document.getElementById('translateBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const status = document.getElementById('status');
+        
+        let selectedFile = null, currentTaskId = null;
+        
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.srt')) selectFile(file);
+        });
+        fileInput.addEventListener('change', (e) => { if (e.target.files[0]) selectFile(e.target.files[0]); });
+        
+        function selectFile(file) {
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileName.style.display = 'block';
+            dropZone.classList.add('has-file');
+            translateBtn.disabled = false;
+            downloadBtn.style.display = 'none';
+            status.style.display = 'none';
+        }
+        
+        translateBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            translateBtn.disabled = true;
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            progressText.textContent = 'Запуск...';
+            downloadBtn.style.display = 'none';
+            status.style.display = 'none';
+            
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('lang', document.getElementById('lang').value);
+            
+            try {
+                const resp = await fetch('/translate', { method: 'POST', body: formData });
+                const data = await resp.json();
+                if (data.error) { showError(data.error); return; }
+                currentTaskId = data.task_id;
+                pollProgress();
+            } catch (e) { showError('Ошибка подключения'); }
+        });
+        
+        async function pollProgress() {
+            try {
+                const resp = await fetch(`/progress/${currentTaskId}`);
+                const data = await resp.json();
+                
+                if (data.status === 'done') {
+                    progressFill.style.width = '100%';
+                    progressText.textContent = 'Готово!';
+                    downloadBtn.style.display = 'block';
+                    translateBtn.disabled = false;
+                    showSuccess('Перевод завершён!');
+                } else if (data.status === 'error') {
+                    showError(data.error || 'Ошибка');
+                } else {
+                    const pct = data.total > 0 ? (data.current / data.total * 100) : 0;
+                    progressFill.style.width = pct + '%';
+                    progressText.textContent = `${data.current} / ${data.total} субтитров`;
+                    setTimeout(pollProgress, 500);
+                }
+            } catch (e) { showError('Потеря соединения'); }
+        }
+        
+        downloadBtn.addEventListener('click', () => { if (currentTaskId) window.location.href = `/download/${currentTaskId}`; });
+        
+        function showError(msg) {
+            status.textContent = '❌ ' + msg;
+            status.className = 'status error';
+            status.style.display = 'block';
+            translateBtn.disabled = false;
+            progressContainer.style.display = 'none';
+        }
+        function showSuccess(msg) {
+            status.textContent = '✅ ' + msg;
+            status.className = 'status success';
+            status.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
