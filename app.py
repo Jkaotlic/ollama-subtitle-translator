@@ -151,7 +151,7 @@ def translate():
         return jsonify({"error": "Только .srt файлы"}), 400
     
     target_lang = request.form.get("lang", "Russian")
-    model = request.form.get("model", "hy-mt")
+    model = request.form.get("model", "translategemma:4b")
     
     task_id = str(uuid.uuid4())
     input_path = UPLOAD_DIR / f"{task_id}_input.srt"

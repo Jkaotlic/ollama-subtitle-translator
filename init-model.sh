@@ -1,17 +1,24 @@
-#!/bin/bash
-# Скрипт первоначальной настройки модели hy-mt в Ollama
+#!/bin/sh
+# Скрипт первоначальной настройки модели translategemma:4b в Ollama
 
 echo "⏳ Ожидание запуска Ollama..."
 until curl -s http://ollama:11434/api/tags > /dev/null 2>&1; do
-    sleep 2
+    sleep 5
 done
 
-echo "📥 Создание модели hy-mt..."
-cat << 'EOF' | curl -s -X POST http://ollama:11434/api/create -d @-
-{
-  "name": "hy-mt",
-  "modelfile": "FROM hf.co/tencent/HY-MT1.5-1.8B-GGUF:Q8_0\nPARAMETER temperature 0.1\nPARAMETER num_ctx 512\nTEMPLATE \"<|im_start|>user\n{{ .Prompt }}<|im_end|>\n<|im_start|>assistant\""
-}
-EOF
+echo "📥 Загрузка модели translategemma:4b..."
+echo "⚠️  Внимание: Модель ~2.5GB, загрузка может занять несколько минут"
 
-echo "✅ Готово!"
+# Проверяем, есть ли уже модель
+if curl -s http://ollama:11434/api/tags | grep -q "translategemma:4b"; then
+    echo "✅ Модель translategemma:4b уже установлена!"
+else
+    # Загружаем модель через API
+    curl -X POST http://ollama:11434/api/pull -d '{
+      "name": "translategemma:4b"
+    }'
+    echo ""
+    echo "✅ Модель translategemma:4b загружена!"
+fi
+
+echo "🚀 Готово! Переводчик готов к работе."

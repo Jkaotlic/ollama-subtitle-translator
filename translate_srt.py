@@ -153,9 +153,9 @@ def restore_tags(text: str, tags: List[str]) -> str:
 
 
 class Translator:
-    """Переводчик через Ollama + HY-MT1.5 (WMT25 Champion)"""
+    """Переводчик через Ollama + Translating Gemma"""
     
-    def __init__(self, model: str = "hy-mt", target_lang: str = "Russian", 
+    def __init__(self, model: str = "translategemma:4b", target_lang: str = "Russian", 
                  ollama_url: str = "http://127.0.0.1:11434"):
         print(f"🔄 Подключение к Ollama ({model})...")
         self.model = model
@@ -170,7 +170,7 @@ class Translator:
             models = [m["name"] for m in resp.json().get("models", [])]
             if not any(model in m for m in models):
                 print(f"⚠️  Модель {model} не найдена. Доступные: {models}")
-                print(f"   Запустите: ollama create hy-mt -f Modelfile")
+                print(f"   Запустите: ollama pull {model}")
                 sys.exit(1)
         except requests.exceptions.ConnectionError:
             print("❌ Ollama не запущен!")
