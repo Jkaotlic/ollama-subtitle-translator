@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 🎬 Переводчик субтитров (.srt) через Ollama
-Использует модель HuanYuan MT 1.5 от Tencent — победитель WMT25.
+Использует модель Translating Gemma (Google) — специализированная модель для перевода.
 
-Поддерживает 33 языка: русский, английский, китайский, японский, корейский,
+Поддерживает множество языков: русский, английский, китайский, японский, корейский,
 немецкий, французский, испанский, итальянский, португальский и др.
 
 Установка:
   1. brew install ollama && ollama serve
-  2. ollama create hy-mt -f Modelfile
+  2. ollama pull translategemma:4b
   3. pip install requests
 
 Примеры:
@@ -204,7 +204,7 @@ class Translator:
 
 
 def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russian",
-                  model: str = "hy-mt", batch_size: int = 10) -> None:
+                  model: str = "translategemma:4b", batch_size: int = 10) -> None:
     """Переводит SRT файл."""
     print(f"📖 Читаю: {input_path}")
     text, encoding = read_srt_file(input_path)
@@ -242,12 +242,12 @@ def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russi
 
 def main():
     parser = argparse.ArgumentParser(
-        description="🎬 Переводчик субтитров (Ollama + HY-MT1.5)"
+        description="🎬 Переводчик субтитров (Ollama + Translating Gemma)"
     )
     parser.add_argument("input", type=Path, help="Входной SRT файл")
     parser.add_argument("--out", "-o", type=Path, default=None, help="Выходной файл")
     parser.add_argument("--lang", "-l", type=str, default="Russian", help="Целевой язык")
-    parser.add_argument("--model", "-m", type=str, default="hy-mt", help="Модель Ollama")
+    parser.add_argument("--model", "-m", type=str, default="translategemma:4b", help="Модель Ollama")
     parser.add_argument("--batch", "-b", type=int, default=10, help="Размер батча для прогресса")
     
     args = parser.parse_args()
