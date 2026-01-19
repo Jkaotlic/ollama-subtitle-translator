@@ -10,6 +10,18 @@ services:
       - OLLAMA_NUM_PARALLEL=2
       - OLLAMA_MAX_LOADED_MODELS=1
     restart: unless-stopped
+    # Для Windows x64 с Docker Desktop CPU-режим
+    # GPU поддержка на Windows требует WSL2 + NVIDIA Container Toolkit
+
+  model-init:
+    image: curlimages/curl:latest
+    container_name: model-init
+    depends_on:
+      - ollama
+    volumes:
+      - ./init-model.sh:/init-model.sh:ro
+    entrypoint: ["/bin/sh", "/init-model.sh"]
+    restart: "no"
 
   translator:
     build: .
@@ -20,6 +32,7 @@ services:
       - OLLAMA_URL=http://ollama:11434
     depends_on:
       - ollama
+      - model-init
     restart: unless-stopped
 
 volumes:
