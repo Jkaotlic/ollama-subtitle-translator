@@ -10,11 +10,14 @@ import threading
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file
 import requests
+import tempfile
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
-UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "/tmp/srt_translator"))
+# На Windows используем tempfile для корректного пути
+default_upload_dir = Path(tempfile.gettempdir()) / "srt_translator"
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", str(default_upload_dir)))
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 tasks = {}

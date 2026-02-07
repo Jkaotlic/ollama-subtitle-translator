@@ -8,8 +8,13 @@ REM               translate.bat "movie.srt" Russian casual
 setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
-set "PYTHON=%SCRIPT_DIR%.venv\Scripts\python.exe"
-set "TRANSLATOR=%SCRIPT_DIR%translate_srt_hf.py"
+REM Используем системный Python если виртуальное окружение не создано
+if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
+    set "PYTHON=%SCRIPT_DIR%.venv\Scripts\python.exe"
+) else (
+    set "PYTHON=python"
+)
+set "TRANSLATOR=%SCRIPT_DIR%translate_srt.py"
 
 REM Проверка аргументов
 if "%~1"=="" (
