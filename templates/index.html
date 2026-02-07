@@ -110,12 +110,32 @@
             <input type="file" id="fileInput" accept=".srt" style="display: none;">
         </div>
         
+        <label for="context">Контекст (необязательно):</label>
+        <textarea id="context" placeholder="Например: Это сериал The Pitt о больнице, много медицинской терминологии" 
+                  style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #4a5568; 
+                         background: #0f3460; color: #eee; font-size: 14px; margin-bottom: 16px; 
+                         resize: vertical; min-height: 80px; font-family: inherit;"></textarea>
+        
         <label for="lang">Язык перевода:</label>
         <select id="lang">
             {% for lang in languages %}
             <option value="{{ lang }}" {% if lang == 'Russian' %}selected{% endif %}>{{ lang }}</option>
             {% endfor %}
         </select>
+        
+        <label for="model">Модель:</label>
+        <input id="model" type="text" value="translategemma:4b" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
+
+        <div style="display:flex; gap:12px;">
+            <div style="flex:1;">
+                <label for="temperature">Temperature:</label>
+                <input id="temperature" type="number" step="0.01" min="0" max="1" value="0" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
+            </div>
+            <div style="width:140px;">
+                <label for="chunk_size">Chunk size (chars):</label>
+                <input id="chunk_size" type="number" value="2000" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
+            </div>
+        </div>
         
         <button id="translateBtn" disabled>🚀 Перевести</button>
         
@@ -179,6 +199,10 @@
             const formData = new FormData();
             formData.append('file', selectedFile);
             formData.append('lang', document.getElementById('lang').value);
+            formData.append('context', document.getElementById('context').value);
+            formData.append('model', document.getElementById('model').value);
+            formData.append('temperature', document.getElementById('temperature').value);
+            formData.append('chunk_size', document.getElementById('chunk_size').value);
             
             try {
                 const resp = await fetch('/translate', { method: 'POST', body: formData });

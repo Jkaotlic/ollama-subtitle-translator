@@ -7,12 +7,27 @@ import os
 import re
 import uuid
 import threading
+import time
+import signal
+import sys
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from flask import Flask, render_template, request, jsonify, send_file
 import requests
+import logging
 import tempfile
 
 app = Flask(__name__)
+
+# Configure structured logging
+LOG_FORMAT = os.environ.get(
+    "LOG_FORMAT",
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format=LOG_FORMAT)
+logger = logging.getLogger("srt-translator")
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # На Windows используем tempfile для корректного пути
@@ -21,6 +36,15 @@ UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", str(default_upload_dir)))
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 tasks = {}
+
+# Пул воркеров для фоновых переводов (можно настроить через env)
+executor = ThreadPoolExecutor(max_workers=int(os.environ.get("MAX_WORKERS", "3")))
+SHUTDOWN_TIMEOUT = int(os.environ.get("SHUTDOWN_TIMEOUT", "30"))
+
+# Cleanup/TTL settings (seconds)
+FILE_TTL = int(os.environ.get("FILE_TTL", str(60 * 60 * 24)))  # default 1 day
+TASK_TTL = int(os.environ.get("TASK_TTL", str(60 * 60 * 24)))  # default 1 day
+CLEANUP_INTERVAL = int(os.environ.get("CLEANUP_INTERVAL", str(60 * 10)))  # default 10 minutes
 
 LANGUAGES = {
     "Russian": "ru", "English": "en", "Chinese": "zh", "Japanese": "ja",
@@ -33,10 +57,59 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}.*$")
 
 
+def cleanup_worker():
+    """Background worker that removes old files and prunes old tasks."""
+    while True:
+        try:
+            now = time.time()
+            # remove old files
+            for p in list(UPLOAD_DIR.iterdir()):
+                try:
+                    mtime = p.stat().st_mtime
+                except Exception:
+                    continue
+                if now - mtime > FILE_TTL:
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+
+            # prune tasks
+            to_remove = []
+            for tid, t in list(tasks.items()):
+                created = t.get("created_at", 0)
+                completed = t.get("completed_at")
+                if completed and (now - completed > TASK_TTL):
+                    out = t.get("output_file")
+                    if out:
+                        try:
+                            Path(out).unlink()
+                        except Exception:
+                            pass
+                    to_remove.append(tid)
+                elif not completed and (now - created > TASK_TTL * 2):
+                    # stale
+                    to_remove.append(tid)
+
+            for tid in to_remove:
+                tasks.pop(tid, None)
+
+        except Exception:
+            pass
+
+        time.sleep(CLEANUP_INTERVAL)
+
+# start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+cleanup_thread.start()
+
+
 def translate_worker(task_id: str, input_path: Path, output_path: Path, 
-                     target_lang: str, model: str):
+                     target_lang: str, model: str, context: str = ""):
     """Фоновый worker для перевода."""
+    t0 = time.time()
     try:
+        logger.info("task=%s action=start model=%s lang=%s", task_id, model, target_lang)
         tasks[task_id]["status"] = "running"
         
         # Читаем файл
@@ -89,36 +162,26 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         
         tasks[task_id]["total"] = len(blocks)
         
-        # Переводим
+        # Переводим пакетно через Translator.translate_batch
+        from translate_srt import Translator
+
+        # Read runtime options passed from UI if any are stored in task metadata
+        temp = tasks.get(task_id, {}).get("temperature")
+        chunk_size = tasks.get(task_id, {}).get("chunk_size", 2000)
+
+        translator = Translator(model=model, target_lang=target_lang, ollama_url=OLLAMA_URL, context=context, temperature=temp if temp is not None else 0.0)
+
+        texts = ["\n".join(b["lines"]) for b in blocks]
+        # chunking handled inside translate_batch
+        translated_texts = translator.translate_batch(texts, max_chars=int(chunk_size))
+
         translated_blocks = []
-        for idx, block in enumerate(blocks):
-            original_text = "\n".join(block["lines"])
-            
-            if original_text.strip():
-                prompt = f"Translate the following segment into {target_lang}, without additional explanation.\n\n{original_text}"
-                
-                try:
-                    resp = requests.post(
-                        f"{OLLAMA_URL}/api/generate",
-                        json={"model": model, "prompt": prompt, "stream": False},
-                        timeout=120
-                    )
-                    
-                    if resp.status_code == 200:
-                        translated = resp.json().get("response", "").strip()
-                    else:
-                        translated = original_text
-                except:
-                    translated = original_text
-            else:
-                translated = original_text
-            
+        for idx, (block, translated) in enumerate(zip(blocks, translated_texts)):
             translated_blocks.append({
                 "index": block["index"],
                 "timecode": block["timecode"],
-                "lines": translated.split("\n")
+                "lines": translated.split("\n") if isinstance(translated, str) else [str(translated)]
             })
-            
             tasks[task_id]["current"] = idx + 1
         
         # Сохраняем
@@ -133,10 +196,20 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         
         tasks[task_id]["status"] = "done"
         tasks[task_id]["output_file"] = str(output_path)
+        tasks[task_id]["completed_at"] = time.time()
+        elapsed = time.time() - t0
+        logger.info("task=%s action=done blocks=%d elapsed=%.1fs", task_id, len(translated_blocks), elapsed)
         
     except Exception as e:
+        elapsed = time.time() - t0
+        logger.exception("task=%s action=error elapsed=%.1fs error=%s", task_id, elapsed, e)
         tasks[task_id]["status"] = "error"
         tasks[task_id]["error"] = str(e)
+        tasks[task_id]["completed_at"] = time.time()
+    finally:
+        final_status = tasks.get(task_id, {}).get("status", "unknown")
+        if final_status != "done":
+            logger.info("task=%s action=final status=%s", task_id, final_status)
 
 
 @app.route("/")
@@ -155,6 +228,7 @@ def translate():
     
     target_lang = request.form.get("lang", "Russian")
     model = request.form.get("model", "translategemma:4b")
+    context = request.form.get("context", "")
     
     task_id = str(uuid.uuid4())
     input_path = UPLOAD_DIR / f"{task_id}_input.srt"
@@ -164,19 +238,25 @@ def translate():
     output_path = UPLOAD_DIR / f"{task_id}_{output_name}"
     
     file.save(input_path)
+    logger.info("task=%s action=upload file=%s lang=%s model=%s", task_id, file.filename, target_lang, model)
     
+    # Pass through temperature and chunk_size from UI
+    temperature = request.form.get("temperature")
+    chunk_size = request.form.get("chunk_size")
+
     tasks[task_id] = {
         "status": "starting",
         "current": 0,
         "total": 0,
-        "output_name": output_name
+        "output_name": output_name,
+        "created_at": time.time(),
+        "temperature": float(temperature) if temperature is not None and temperature != "" else 0.0,
+        "chunk_size": int(chunk_size) if chunk_size is not None and chunk_size != "" else 2000,
     }
     
-    thread = threading.Thread(
-        target=translate_worker,
-        args=(task_id, input_path, output_path, target_lang, model)
-    )
-    thread.start()
+    # Запускаем фоновую задачу в пуле воркеров
+    future = executor.submit(translate_worker, task_id, input_path, output_path, target_lang, model, context)
+    tasks[task_id]["future"] = future
     
     return jsonify({"task_id": task_id})
 
@@ -184,6 +264,7 @@ def translate():
 @app.route("/progress/<task_id>")
 def progress(task_id):
     if task_id not in tasks:
+        logger.warning("task=%s action=progress error=not_found", task_id)
         return jsonify({"error": "Задача не найдена"}), 404
     return jsonify(tasks[task_id])
 
@@ -207,4 +288,45 @@ def download(task_id):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8847))
     print(f"🌐 Запуск на http://localhost:{port}")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # Register signal handlers for graceful shutdown
+    def _shutdown_handler(signum, frame):
+        logger.info("Shutdown signal received: %s", signum)
+        try:
+            # stop accepting new tasks
+            executor.shutdown(wait=False)
+        except Exception:
+            pass
+
+        # collect futures to wait on
+        futures = [t.get("future") for t in tasks.values() if t.get("future") is not None]
+        pending = [f for f in futures if f is not None and not f.done()]
+        if pending:
+            logger.info("Waiting up to %s seconds for %d running tasks", SHUTDOWN_TIMEOUT, len(pending))
+            try:
+                done, not_done = concurrent.futures.wait(pending, timeout=SHUTDOWN_TIMEOUT)
+            except Exception:
+                not_done = pending
+            # cancel remaining
+            for f in not_done:
+                try:
+                    f.cancel()
+                except Exception:
+                    pass
+
+        logger.info("Exiting")
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)
+
+    try:
+        signal.signal(signal.SIGINT, _shutdown_handler)
+        signal.signal(signal.SIGTERM, _shutdown_handler)
+    except Exception:
+        # signals may not be available on some platforms
+        pass
+
+    try:
+        app.run(host="0.0.0.0", port=port, debug=True)
+    except KeyboardInterrupt:
+        _shutdown_handler(None, None)
