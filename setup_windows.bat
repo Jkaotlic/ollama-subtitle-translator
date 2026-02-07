@@ -29,10 +29,9 @@ if %errorlevel% equ 0 (
 )
 echo.
 
-:: Создание модели
-echo [i] Загрузка модели HY-MT (может занять 2-3 минуты)...
-ollama pull hf.co/tencent/HY-MT1.5-1.8B-GGUF:Q8_0
-ollama create hy-mt -f Modelfile
+:: Загрузка модели
+echo [i] Загрузка модели Translating Gemma (может занять 2-3 минуты)...
+ollama pull translategemma:4b
 
 echo.
 echo [✓] Модель готова!
@@ -40,7 +39,7 @@ echo.
 
 :: Установка Python зависимостей
 echo [i] Установка Python зависимостей...
-pip install flask requests -q
+pip install -r "%~dp0requirements.txt" -q
 
 echo.
 echo ========================================

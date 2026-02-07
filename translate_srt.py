@@ -7,7 +7,7 @@
 немецкий, французский, испанский, итальянский, португальский и др.
 
 Установка:
-  1. brew install ollama && ollama serve
+  1. Установить Ollama: https://ollama.com/download
   2. ollama pull translategemma:4b
   3. pip install requests
 
