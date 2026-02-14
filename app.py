@@ -266,7 +266,9 @@ def progress(task_id):
     if task_id not in tasks:
         logger.warning("task=%s action=progress error=not_found", task_id)
         return jsonify({"error": "Задача не найдена"}), 404
-    return jsonify(tasks[task_id])
+    # Exclude non-serializable fields (e.g. Future) from JSON response
+    safe = {k: v for k, v in tasks[task_id].items() if k != "future"}
+    return jsonify(safe)
 
 
 @app.route("/download/<task_id>")
