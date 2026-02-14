@@ -335,31 +335,46 @@ class Translator:
             translated_list: List[str] = []
             try:
                 data = resp.json()
-                translated_list = data.get("segments") or data.get("segments")
-            except Exception:
-                # Try to extract JSON substring
-                txt = resp.text
-                try:
-                    start = txt.index("{")
-                    end = txt.rindex("}")
-                    data = json.loads(txt[start:end+1])
-                    translated_list = data.get("segments", [])
-                except Exception:
-                    translated_list = []
+                # Ollama envelope: actual model output is in data["response"]
+                model_response = data.get("response", "")
+                logger.debug("translate_batch: raw model response (first 500 chars): %.500s", model_response)
 
-            if not translated_list or len(translated_list) != len(chunk):
-                # If model didn't follow JSON contract, fallback to splitting by markers
-                txt = resp.text
-                # crude split: try to split by <<<ENDSEG>>>
-                parts = [p.strip() for p in txt.split("<<<ENDSEG>>>") if p.strip()]
-                # remove potential opening markers
-                cleaned = []
-                for p in parts:
-                    cleaned.append(p.replace("<<<SEG>>>", "").strip())
-                # pad or trim
-                while len(cleaned) < len(chunk):
-                    cleaned.append("")
-                translated_list = cleaned[:len(chunk)]
+                # Strip markdown code fences (```json ... ```)
+                cleaned_response = model_response.strip()
+                if cleaned_response.startswith("```"):
+                    # Remove opening fence (```json or ```)
+                    first_nl = cleaned_response.index("\n")
+                    cleaned_response = cleaned_response[first_nl + 1:]
+                if cleaned_response.endswith("```"):
+                    cleaned_response = cleaned_response[:-3].strip()
+
+                # Try to parse the model's response as JSON
+                try:
+                    parsed = json.loads(cleaned_response)
+                    translated_list = parsed.get("segments", [])
+                except (json.JSONDecodeError, ValueError):
+                    # Try to find JSON object inside the response
+                    try:
+                        start = cleaned_response.index("{")
+                        end = cleaned_response.rindex("}")
+                        parsed = json.loads(cleaned_response[start:end + 1])
+                        translated_list = parsed.get("segments", [])
+                    except (ValueError, json.JSONDecodeError):
+                        translated_list = []
+            except Exception:
+                translated_list = []
+
+            if translated_list and len(translated_list) == len(chunk):
+                logger.info("translate_batch: chunk %d/%d parsed %d segments OK", chunk_idx + 1, len(chunks), len(translated_list))
+            else:
+                # JSON parsing failed or wrong count — fallback to one-by-one translation
+                logger.warning("translate_batch: chunk %d/%d JSON parse failed (got %d, expected %d), falling back to per-segment translation",
+                               chunk_idx + 1, len(chunks), len(translated_list), len(chunk))
+                translated_list = []
+                for seg_idx, seg in enumerate(chunk):
+                    translated = self.translate(seg)
+                    translated_list.append(translated)
+                    logger.debug("translate_batch fallback: seg %d/%d done", seg_idx + 1, len(chunk))
 
             # Restore tags
             for translated, tags in zip(translated_list, tags_list):
