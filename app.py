@@ -349,20 +349,29 @@ def browse_files():
             browse_path = "/"
 
     p = Path(browse_path)
-    if not p.exists() or not p.is_dir():
-        return jsonify({"error": "Directory not found"}), 404
+    try:
+        if not p.exists() or not p.is_dir():
+            return jsonify({"error": f"Папка не найдена: {browse_path}"}), 404
+    except OSError as e:
+        return jsonify({"error": f"Не удалось подключиться: {e}"}), 400
 
     entries = []
     try:
         for item in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
             if item.name.startswith("."):
                 continue
-            if item.is_dir():
+            try:
+                is_dir = item.is_dir()
+            except OSError:
+                continue
+            if is_dir:
                 entries.append({"name": item.name, "is_dir": True, "path": str(item)})
             elif item.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS:
                 entries.append({"name": item.name, "is_dir": False, "path": str(item)})
     except PermissionError:
-        return jsonify({"error": "Access denied"}), 403
+        return jsonify({"error": "Нет доступа к этой папке"}), 403
+    except OSError as e:
+        return jsonify({"error": f"Ошибка чтения: {e}"}), 400
 
     # Parent directory
     parent = str(p.parent) if p.parent != p else ""
