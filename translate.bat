@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
-REM 🎬 Быстрый перевод субтитров
+REM 🎬 Быстрый перевод субтитров (CLI)
 REM Использование: translate.bat "movie.srt"
 REM               translate.bat "movie.srt" Japanese
-REM               translate.bat "movie.srt" Russian casual
+REM               translate.bat "movie.srt" Russian -s English
 
 setlocal enabledelayedexpansion
 
@@ -21,11 +21,12 @@ if "%~1"=="" (
     echo ❌ Укажите файл субтитров!
     echo.
     echo Использование:
-    echo   translate.bat movie.srt                    # На русский (natural)
-    echo   translate.bat movie.srt Japanese           # На японский
-    echo   translate.bat movie.srt Russian casual     # Разговорный стиль
+    echo   translate.bat movie.srt                        # На русский
+    echo   translate.bat movie.srt Japanese               # На японский
+    echo   translate.bat movie.srt Russian -s English     # С указанием исходного языка
+    echo   translate.bat movie.srt Russian --two-pass     # Двухпроходный перевод
     echo.
-    echo Стили: natural (по умолчанию), casual, formal, literal
+    echo Все флаги: %PYTHON% %TRANSLATOR% --help
     exit /b 1
 )
 
@@ -33,11 +34,7 @@ REM Язык по умолчанию - русский
 set "LANG=Russian"
 if not "%~2"=="" set "LANG=%~2"
 
-REM Стиль по умолчанию - natural
-set "STYLE=natural"
-if not "%~3"=="" set "STYLE=%~3"
-
-echo 🎬 Перевод: %~1 → %LANG% (%STYLE%)
-"%PYTHON%" "%TRANSLATOR%" "%~1" -l "%LANG%" -s "%STYLE%"
+echo 🎬 Перевод: %~1 → %LANG%
+"%PYTHON%" "%TRANSLATOR%" "%~1" -l "%LANG%" %3 %4 %5 %6 %7 %8 %9
 
 endlocal

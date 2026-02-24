@@ -50,6 +50,16 @@ else
     echo -e "${GREEN}✅ Модель загружена${NC}"
 fi
 
+# Проверка ffmpeg (опционально, для извлечения субтитров из видео)
+echo ""
+echo "2.5️⃣ Проверка ffmpeg (опционально)..."
+if command -v ffmpeg &> /dev/null && command -v ffprobe &> /dev/null; then
+    echo -e "${GREEN}✅ ffmpeg установлен (извлечение субтитров из видео доступно)${NC}"
+else
+    echo -e "${YELLOW}⚠️  ffmpeg не найден. Извлечение субтитров из видео недоступно.${NC}"
+    echo "   Установите: brew install ffmpeg (macOS) или apt install ffmpeg (Linux)"
+fi
+
 # Проверка виртуального окружения
 echo ""
 echo "3️⃣ Проверка Python окружения..."

@@ -30,6 +30,9 @@ services:
       - "8847:8847"
     environment:
       - OLLAMA_URL=http://ollama:11434
+      - VIDEO_DIR=/videos
+    volumes:
+      - ${VIDEO_HOST_DIR:-/mnt/media}:/videos:ro
     depends_on:
       - ollama
       - model-init

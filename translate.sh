@@ -1,30 +1,33 @@
 #!/bin/bash
-# 🎬 Быстрый перевод субтитров
+# 🎬 Быстрый перевод субтитров (CLI)
 # Использование: ./translate.sh "movie.srt"
 #               ./translate.sh "movie.srt" Japanese
-#               ./translate.sh "movie.srt" Russian casual
+#               ./translate.sh "movie.srt" Russian -s English
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON="$SCRIPT_DIR/.venv/bin/python"
-TRANSLATOR="$SCRIPT_DIR/translate_srt_hf.py"
+TRANSLATOR="$SCRIPT_DIR/translate_srt.py"
 
 # Проверка аргументов
 if [ -z "$1" ]; then
     echo "❌ Укажите файл субтитров!"
     echo ""
     echo "Использование:"
-    echo "  ./translate.sh movie.srt                    # На русский (natural)"
-    echo "  ./translate.sh movie.srt Japanese           # На японский"
-    echo "  ./translate.sh movie.srt Russian casual     # Разговорный стиль"
+    echo "  ./translate.sh movie.srt                        # На русский"
+    echo "  ./translate.sh movie.srt Japanese               # На японский"
+    echo "  ./translate.sh movie.srt Russian -s English     # С указанием исходного языка"
+    echo "  ./translate.sh movie.srt Russian --two-pass     # Двухпроходный перевод"
     echo ""
-    echo "Стили: natural (по умолчанию), casual, formal, literal"
+    echo "Все флаги: $PYTHON $TRANSLATOR --help"
     exit 1
 fi
 
-# Язык по умолчанию - русский
-LANG="${2:-Russian}"
-# Стиль по умолчанию - natural
-STYLE="${3:-natural}"
+INPUT="$1"
+shift
 
-echo "🎬 Перевод: $1 → $LANG ($STYLE)"
-"$PYTHON" "$TRANSLATOR" "$1" -l "$LANG" -s "$STYLE"
+# Язык по умолчанию - русский
+LANG="${1:-Russian}"
+shift 2>/dev/null
+
+echo "🎬 Перевод: $INPUT → $LANG"
+"$PYTHON" "$TRANSLATOR" "$INPUT" -l "$LANG" "$@"

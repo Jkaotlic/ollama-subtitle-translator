@@ -326,6 +326,116 @@ def pull_model():
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
 
+@app.route("/check_ffmpeg", methods=["POST"])
+def check_ffmpeg():
+    """Check if ffmpeg/ffprobe are installed."""
+    from video_utils import check_ffmpeg_available
+    available = check_ffmpeg_available()
+    return jsonify({"available": available})
+
+
+@app.route("/probe_video", methods=["POST"])
+def probe_video():
+    """Probe a video file for embedded subtitle tracks."""
+    data = request.get_json(silent=True) or {}
+    video_path = data.get("path", "").strip()
+
+    if not video_path:
+        return jsonify({"error": "Video path is required"}), 400
+
+    try:
+        from video_utils import probe_subtitle_tracks, resolve_video_path, format_track_label
+        resolved = resolve_video_path(video_path)
+        tracks = probe_subtitle_tracks(resolved)
+    except FileNotFoundError as e:
+        return jsonify({"error": str(e)}), 404
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    if not tracks:
+        return jsonify({"error": "No subtitle tracks found", "tracks": []}), 200
+
+    return jsonify({
+        "tracks": [
+            {
+                "index": t.index,
+                "sub_index": t.sub_index,
+                "codec_name": t.codec_name,
+                "language": t.language,
+                "title": t.title,
+                "is_text": t.is_text,
+                "is_image": t.is_image,
+                "label": format_track_label(t),
+            }
+            for t in tracks
+        ]
+    })
+
+
+@app.route("/extract_and_translate", methods=["POST"])
+def extract_and_translate():
+    """Extract subtitle track from video and start translation."""
+    data = request.get_json(silent=True) or {}
+
+    video_path = data.get("path", "").strip()
+    sub_index = data.get("sub_index")
+    target_lang = data.get("lang", "Russian")
+    model = data.get("model", "translategemma:4b")
+    context = data.get("context", "")
+    source_lang = data.get("source_lang", "")
+    two_pass = data.get("two_pass", False)
+    review_model = data.get("review_model", "")
+    temperature = data.get("temperature")
+    chunk_size = data.get("chunk_size")
+
+    if not video_path:
+        return jsonify({"error": "Video path is required"}), 400
+    if sub_index is None:
+        return jsonify({"error": "Subtitle track index is required"}), 400
+
+    task_id = str(uuid.uuid4())
+
+    # Extract subtitle to temp SRT
+    extracted_srt = UPLOAD_DIR / f"{task_id}_extracted.srt"
+
+    try:
+        from video_utils import extract_subtitle_track, resolve_video_path
+        resolved = resolve_video_path(video_path)
+        extract_subtitle_track(resolved, int(sub_index), str(extracted_srt))
+    except Exception as e:
+        logger.exception("task=%s action=extract_failed error=%s", task_id, e)
+        return jsonify({"error": f"Subtitle extraction failed: {e}"}), 500
+
+    # Build output filename from video filename
+    video_stem = Path(video_path).stem
+    lang_code = LANGUAGES.get(target_lang, "ru")
+    output_name = f"{video_stem}.{lang_code}.srt"
+    output_path = UPLOAD_DIR / f"{task_id}_{output_name}"
+
+    tasks[task_id] = {
+        "status": "starting",
+        "current": 0,
+        "total": 0,
+        "output_name": output_name,
+        "created_at": time.time(),
+        "temperature": float(temperature) if temperature is not None and temperature != "" else 0.0,
+        "chunk_size": int(chunk_size) if chunk_size is not None and chunk_size != "" else 2000,
+    }
+
+    logger.info("task=%s action=extract_and_translate video=%s sub_index=%s lang=%s model=%s",
+                task_id, video_path, sub_index, target_lang, model)
+
+    future = executor.submit(
+        translate_worker, task_id, extracted_srt, output_path,
+        target_lang, model, context, source_lang, two_pass, review_model,
+    )
+    tasks[task_id]["future"] = future
+
+    return jsonify({"task_id": task_id})
+
+
 @app.route("/download/<task_id>")
 def download(task_id):
     if task_id not in tasks:
