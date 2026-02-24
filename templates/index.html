@@ -631,9 +631,11 @@
 
             if (currentMode === 'video') {
                 // Video mode: extract + translate
+                const vp = document.getElementById('videoPath').value.trim();
                 const payload = {
-                    path: document.getElementById('videoPath').value.trim(),
+                    path: vp,
                     sub_index: selectedTrack.sub_index,
+                    original_name: document.getElementById('videoFileName').textContent || '',
                     lang: document.getElementById('lang').value,
                     source_lang: document.getElementById('source_lang').value,
                     context: document.getElementById('context').value,
@@ -689,7 +691,11 @@
                     progressText.textContent = 'Готово!';
                     downloadBtn.style.display = 'block';
                     translateBtn.disabled = false;
-                    showSuccess('Перевод завершён!');
+                    if (data.saved_to) {
+                        showSuccess('Перевод сохранён: ' + data.saved_to);
+                    } else {
+                        showSuccess('Перевод завершён!');
+                    }
                 } else if (data.status === 'error') {
                     showError(data.error || 'Ошибка');
                 } else {

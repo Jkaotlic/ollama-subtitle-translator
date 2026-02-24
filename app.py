@@ -201,6 +201,18 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         tasks[task_id]["completed_at"] = time.time()
         elapsed = time.time() - t0
         logger.info("task=%s action=done blocks=%d elapsed=%.1fs", task_id, len(translated_blocks), elapsed)
+
+        # Auto-save next to video if save_dir is set
+        save_dir = tasks[task_id].get("save_dir", "")
+        if save_dir:
+            try:
+                import shutil
+                dest = Path(save_dir) / tasks[task_id]["output_name"]
+                shutil.copy2(str(output_path), str(dest))
+                tasks[task_id]["saved_to"] = str(dest)
+                logger.info("task=%s action=auto_save dest=%s", task_id, dest)
+            except Exception as copy_err:
+                logger.warning("task=%s action=auto_save_failed error=%s", task_id, copy_err)
         
     except Exception as e:
         elapsed = time.time() - t0
@@ -417,6 +429,7 @@ def extract_and_translate():
     review_model = data.get("review_model", "")
     temperature = data.get("temperature")
     chunk_size = data.get("chunk_size")
+    original_name = data.get("original_name", "").strip()
 
     if not video_path:
         return jsonify({"error": "Video path is required"}), 400
@@ -436,17 +449,24 @@ def extract_and_translate():
         logger.exception("task=%s action=extract_failed error=%s", task_id, e)
         return jsonify({"error": f"Subtitle extraction failed: {e}"}), 500
 
-    # Build output filename from video filename
-    video_stem = Path(video_path).stem
+    # Use original_name if provided (uploaded file), otherwise use video_path stem
+    video_stem = Path(original_name).stem if original_name else Path(video_path).stem
     lang_code = LANGUAGES.get(target_lang, "ru")
     output_name = f"{video_stem}.{lang_code}.srt"
     output_path = UPLOAD_DIR / f"{task_id}_{output_name}"
+
+    # Determine save directory: save next to video if path is not a temp upload
+    save_dir = ""
+    video_dir = str(Path(video_path).parent)
+    if not video_dir.startswith(str(UPLOAD_DIR)):
+        save_dir = video_dir
 
     tasks[task_id] = {
         "status": "starting",
         "current": 0,
         "total": 0,
         "output_name": output_name,
+        "save_dir": save_dir,
         "created_at": time.time(),
         "temperature": float(temperature) if temperature is not None and temperature != "" else 0.0,
         "chunk_size": int(chunk_size) if chunk_size is not None and chunk_size != "" else 2000,
