@@ -106,12 +106,38 @@
         }
         .pull-container .progress-bar { margin-top: 8px; }
         .pull-status { font-size: 13px; color: #a0aec0; margin-top: 6px; }
+        .mode-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+        .mode-tab {
+            flex: 1; padding: 10px; border: 1px solid #4a5568; border-radius: 8px;
+            background: transparent; color: #a0aec0; font-size: 14px;
+            cursor: pointer; transition: all 0.3s; width: auto;
+        }
+        .mode-tab:hover { border-color: #667eea; color: #eee; transform: none; }
+        .mode-tab.active { border-color: #667eea; background: rgba(102,126,234,0.15); color: #eee; }
+        .video-input-panel { display: none; margin-bottom: 20px; }
+        .video-input-panel.active { display: block; }
+        .track-list { max-height: 200px; overflow-y: auto; margin: 12px 0; }
+        .track-item {
+            padding: 10px 12px; border: 1px solid #4a5568; border-radius: 6px;
+            margin-bottom: 6px; cursor: pointer; transition: all 0.2s;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .track-item:hover { border-color: #667eea; background: rgba(102,126,234,0.1); }
+        .track-item.selected { border-color: #48bb78; background: rgba(72,187,120,0.1); }
+        .track-item.disabled { opacity: 0.5; cursor: not-allowed; }
+        .track-codec { font-size: 12px; color: #718096; }
+        .track-warning { font-size: 11px; color: #fc8181; margin-top: 4px; }
     </style>
 </head>
 <body>
     <h1>🎬 Переводчик субтитров</h1>
     
     <div class="card">
+        <div class="mode-tabs" id="modeTabs">
+            <button class="mode-tab active" data-mode="srt" onclick="switchMode('srt')">📄 Загрузить SRT</button>
+            <button class="mode-tab" data-mode="video" onclick="switchMode('video')">🎬 Извлечь из видео</button>
+        </div>
+
         <div class="drop-zone" id="dropZone">
             <div class="emoji">📁</div>
             <div>Перетащите .srt файл сюда</div>
@@ -120,6 +146,27 @@
             <input type="file" id="fileInput" accept=".srt" style="display: none;">
         </div>
         
+        <div class="video-input-panel" id="videoPanel">
+            <label for="videoPath">Путь к видеофайлу:</label>
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <input id="videoPath" type="text" placeholder="/path/to/movie.mkv"
+                       style="flex:1; padding:12px; border-radius:8px; border:1px solid #4a5568;
+                              background:#0f3460; color:#eee; font-size:14px;">
+                <button id="probeBtn" onclick="probeVideo()" style="width:auto; padding:12px 20px; white-space:nowrap;">
+                    🔍 Сканировать
+                </button>
+            </div>
+            <div id="trackListContainer" style="display:none;">
+                <label>Найденные субтитры:</label>
+                <div class="track-list" id="trackList"></div>
+            </div>
+            <div id="noTracksMsg" style="display:none; text-align:center; color:#fc8181; padding:12px;"></div>
+            <div id="ffmpegWarning" style="display:none; text-align:center; color:#fc8181; padding:12px;">
+                ffmpeg/ffprobe не установлен. Необходим для извлечения субтитров из видео.<br>
+                <span style="font-size:12px; color:#718096;">macOS: brew install ffmpeg | Linux: apt install ffmpeg</span>
+            </div>
+        </div>
+
         <label for="context">Контекст (необязательно):</label>
         <textarea id="context" placeholder="Например: Это сериал The Pitt о больнице, много медицинской терминологии" 
                   style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #4a5568; 
@@ -205,6 +252,109 @@
         const status = document.getElementById('status');
         
         let selectedFile = null, currentTaskId = null;
+        let currentMode = 'srt';
+        let selectedTrack = null;
+
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-tab').forEach(t =>
+                t.classList.toggle('active', t.dataset.mode === mode));
+            dropZone.style.display = mode === 'srt' ? 'block' : 'none';
+            document.getElementById('videoPanel').style.display = mode === 'video' ? 'block' : 'none';
+            document.getElementById('videoPanel').classList.toggle('active', mode === 'video');
+            selectedTrack = null;
+            updateTranslateButton();
+            if (mode === 'video') checkFfmpeg();
+        }
+
+        async function checkFfmpeg() {
+            try {
+                const resp = await fetch('/check_ffmpeg', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
+                });
+                const data = await resp.json();
+                document.getElementById('ffmpegWarning').style.display = data.available ? 'none' : 'block';
+            } catch (e) {}
+        }
+
+        async function probeVideo() {
+            const videoPath = document.getElementById('videoPath').value.trim();
+            if (!videoPath) return;
+
+            const trackList = document.getElementById('trackList');
+            const trackContainer = document.getElementById('trackListContainer');
+            const noTracksMsg = document.getElementById('noTracksMsg');
+
+            trackList.innerHTML = '<div style="text-align:center; color:#a0aec0;">Сканирование...</div>';
+            trackContainer.style.display = 'block';
+            noTracksMsg.style.display = 'none';
+            selectedTrack = null;
+            updateTranslateButton();
+
+            try {
+                const resp = await fetch('/probe_video', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({path: videoPath}),
+                });
+                const data = await resp.json();
+
+                if (data.error && (!data.tracks || data.tracks.length === 0)) {
+                    trackContainer.style.display = 'none';
+                    noTracksMsg.style.display = 'block';
+                    noTracksMsg.textContent = data.error;
+                    return;
+                }
+                if (!data.tracks || data.tracks.length === 0) {
+                    trackContainer.style.display = 'none';
+                    noTracksMsg.style.display = 'block';
+                    noTracksMsg.textContent = 'Субтитры не найдены в этом файле.';
+                    return;
+                }
+
+                trackList.innerHTML = '';
+                data.tracks.forEach(track => {
+                    const div = document.createElement('div');
+                    div.className = 'track-item' + (track.is_image ? ' disabled' : '');
+                    div.innerHTML = `
+                        <div>
+                            <strong>${track.language ? track.language.toUpperCase() : 'Unknown'}</strong>
+                            ${track.title ? ' — ' + track.title : ''}
+                            <span class="track-codec">[${track.codec_name}]</span>
+                            ${track.is_image ? '<div class="track-warning">Графические субтитры — нельзя извлечь как текст</div>' : ''}
+                        </div>
+                        <div style="font-size:12px; color:#718096;">Track #${track.sub_index}</div>
+                    `;
+                    if (!track.is_image) {
+                        div.addEventListener('click', () => {
+                            document.querySelectorAll('.track-item').forEach(t => t.classList.remove('selected'));
+                            div.classList.add('selected');
+                            selectedTrack = track;
+                            updateTranslateButton();
+                        });
+                    }
+                    trackList.appendChild(div);
+                });
+
+                // Auto-select first text track
+                const firstText = data.tracks.find(t => t.is_text);
+                if (firstText) {
+                    const items = trackList.querySelectorAll('.track-item');
+                    if (items[firstText.sub_index]) items[firstText.sub_index].click();
+                }
+            } catch (e) {
+                trackContainer.style.display = 'none';
+                noTracksMsg.style.display = 'block';
+                noTracksMsg.textContent = 'Ошибка подключения к серверу';
+            }
+        }
+
+        function updateTranslateButton() {
+            if (currentMode === 'srt') {
+                translateBtn.disabled = !selectedFile;
+            } else {
+                translateBtn.disabled = !selectedTrack;
+            }
+        }
 
         // Toggle review_model field visibility
         document.getElementById('two_pass').addEventListener('change', (e) => {
@@ -227,9 +377,9 @@
             fileName.textContent = file.name;
             fileName.style.display = 'block';
             dropZone.classList.add('has-file');
-            translateBtn.disabled = false;
             downloadBtn.style.display = 'none';
             status.style.display = 'none';
+            updateTranslateButton();
         }
         
         // --- Model check & pull helpers ---
@@ -328,7 +478,6 @@
 
         // --- Main translate flow ---
         translateBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
             translateBtn.disabled = true;
             downloadBtn.style.display = 'none';
             status.style.display = 'none';
@@ -346,26 +495,54 @@
             progressFill.style.width = '0%';
             progressText.textContent = 'Запуск...';
 
-            const formData = new FormData();
-            formData.append('file', selectedFile);
-            formData.append('lang', document.getElementById('lang').value);
-            formData.append('source_lang', document.getElementById('source_lang').value);
-            formData.append('context', document.getElementById('context').value);
-            formData.append('model', document.getElementById('model').value);
-            formData.append('temperature', document.getElementById('temperature').value);
-            formData.append('chunk_size', document.getElementById('chunk_size').value);
-            if (document.getElementById('two_pass').checked) {
-                formData.append('two_pass', 'on');
-                formData.append('review_model', document.getElementById('review_model').value);
+            if (currentMode === 'video') {
+                // Video mode: extract + translate
+                const payload = {
+                    path: document.getElementById('videoPath').value.trim(),
+                    sub_index: selectedTrack.sub_index,
+                    lang: document.getElementById('lang').value,
+                    source_lang: document.getElementById('source_lang').value,
+                    context: document.getElementById('context').value,
+                    model: document.getElementById('model').value,
+                    temperature: document.getElementById('temperature').value,
+                    chunk_size: document.getElementById('chunk_size').value,
+                    two_pass: document.getElementById('two_pass').checked,
+                    review_model: document.getElementById('review_model').value,
+                };
+                try {
+                    const resp = await fetch('/extract_and_translate', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await resp.json();
+                    if (data.error) { showError(data.error); return; }
+                    currentTaskId = data.task_id;
+                    pollProgress();
+                } catch (e) { showError('Ошибка подключения'); }
+            } else {
+                // SRT mode (existing)
+                if (!selectedFile) return;
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('lang', document.getElementById('lang').value);
+                formData.append('source_lang', document.getElementById('source_lang').value);
+                formData.append('context', document.getElementById('context').value);
+                formData.append('model', document.getElementById('model').value);
+                formData.append('temperature', document.getElementById('temperature').value);
+                formData.append('chunk_size', document.getElementById('chunk_size').value);
+                if (document.getElementById('two_pass').checked) {
+                    formData.append('two_pass', 'on');
+                    formData.append('review_model', document.getElementById('review_model').value);
+                }
+                try {
+                    const resp = await fetch('/translate', { method: 'POST', body: formData });
+                    const data = await resp.json();
+                    if (data.error) { showError(data.error); return; }
+                    currentTaskId = data.task_id;
+                    pollProgress();
+                } catch (e) { showError('Ошибка подключения'); }
             }
-
-            try {
-                const resp = await fetch('/translate', { method: 'POST', body: formData });
-                const data = await resp.json();
-                if (data.error) { showError(data.error); return; }
-                currentTaskId = data.task_id;
-                pollProgress();
-            } catch (e) { showError('Ошибка подключения'); }
         });
 
         async function pollProgress() {

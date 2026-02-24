@@ -2,7 +2,6 @@
 chcp 65001 >nul
 echo ========================================
 echo   Установка переводчика субтитров
-echo   Windows + RTX 4090
 echo ========================================
 echo.
 
@@ -30,7 +29,7 @@ if %errorlevel% equ 0 (
 echo.
 
 :: Загрузка модели
-echo [i] Загрузка модели Translating Gemma (может занять 2-3 минуты)...
+echo [i] Загрузка модели translategemma:4b (может занять 2-3 минуты)...
 ollama pull translategemma:4b
 
 echo.
@@ -45,7 +44,7 @@ echo.
 echo ========================================
 echo   Готово! Теперь можно запускать:
 echo.
-echo   CLI:  python translate_srt.py "file.srt"
+echo   CLI:  python translate_srt.py "file.srt" -l Russian
 echo   Web:  python app.py
 echo         Открыть http://localhost:8847
 echo ========================================
