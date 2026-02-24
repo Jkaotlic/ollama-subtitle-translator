@@ -7,12 +7,20 @@ import subprocess
 import json
 import shutil
 import os
+import sys
+import platform
 import logging
+import zipfile
+import tarfile
+import urllib.request
 from pathlib import Path
 from typing import List
 from dataclasses import dataclass
 
 logger = logging.getLogger("video-utils")
+
+# Directory for auto-downloaded ffmpeg binaries
+FFMPEG_BIN_DIR = Path(__file__).parent / "ffmpeg_bin"
 
 # Codecs that can be extracted as text-based SRT
 TEXT_CODECS = {"subrip", "ass", "ssa", "mov_text", "webvtt", "text"}
@@ -38,8 +46,85 @@ class SubtitleTrack:
     is_image: bool       # True if codec is image-based
 
 
+def _download_ffmpeg() -> bool:
+    """Download static ffmpeg+ffprobe binaries for the current platform."""
+    system = platform.system()
+    if system == "Windows":
+        url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+    elif system == "Linux":
+        url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+    elif system == "Darwin":
+        url = "https://evermeet.cx/ffmpeg/getrelease/zip"
+    else:
+        logger.warning("Unsupported platform for auto-download: %s", system)
+        return False
+
+    FFMPEG_BIN_DIR.mkdir(exist_ok=True)
+    archive_path = FFMPEG_BIN_DIR / ("ffmpeg_download.zip" if system != "Linux" else "ffmpeg_download.tar.xz")
+
+    try:
+        logger.info("Downloading ffmpeg from %s ...", url)
+        urllib.request.urlretrieve(url, str(archive_path))
+
+        if system == "Windows":
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                for member in zf.namelist():
+                    basename = Path(member).name.lower()
+                    if basename in ("ffmpeg.exe", "ffprobe.exe"):
+                        target = FFMPEG_BIN_DIR / basename
+                        with zf.open(member) as src, open(target, "wb") as dst:
+                            dst.write(src.read())
+        elif system == "Linux":
+            with tarfile.open(archive_path, "r:xz") as tf:
+                for member in tf.getmembers():
+                    basename = Path(member.name).name.lower()
+                    if basename in ("ffmpeg", "ffprobe"):
+                        member.name = basename
+                        tf.extract(member, FFMPEG_BIN_DIR)
+                        (FFMPEG_BIN_DIR / basename).chmod(0o755)
+        elif system == "Darwin":
+            # evermeet provides single-binary zips; need separate downloads
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                zf.extractall(FFMPEG_BIN_DIR)
+            # Also download ffprobe
+            probe_url = "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip"
+            probe_archive = FFMPEG_BIN_DIR / "ffprobe_download.zip"
+            urllib.request.urlretrieve(probe_url, str(probe_archive))
+            with zipfile.ZipFile(probe_archive, "r") as zf:
+                zf.extractall(FFMPEG_BIN_DIR)
+            probe_archive.unlink(missing_ok=True)
+
+        archive_path.unlink(missing_ok=True)
+
+        # Add to PATH
+        bin_str = str(FFMPEG_BIN_DIR)
+        if bin_str not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = bin_str + os.pathsep + os.environ.get("PATH", "")
+
+        logger.info("ffmpeg downloaded to %s", FFMPEG_BIN_DIR)
+        return True
+    except Exception as e:
+        logger.error("Failed to download ffmpeg: %s", e)
+        archive_path.unlink(missing_ok=True)
+        return False
+
+
+def ensure_ffmpeg() -> bool:
+    """Ensure ffmpeg/ffprobe are available. Auto-downloads if missing."""
+    if check_ffmpeg_available():
+        return True
+    logger.info("ffmpeg not found on PATH, attempting auto-download...")
+    if _download_ffmpeg():
+        return check_ffmpeg_available()
+    return False
+
+
 def check_ffmpeg_available() -> bool:
-    """Check if ffmpeg and ffprobe are on PATH."""
+    """Check if ffmpeg and ffprobe are on PATH (includes ffmpeg_bin dir)."""
+    # Always include local ffmpeg_bin in PATH check
+    bin_str = str(FFMPEG_BIN_DIR)
+    if FFMPEG_BIN_DIR.exists() and bin_str not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = bin_str + os.pathsep + os.environ.get("PATH", "")
     return shutil.which("ffprobe") is not None and shutil.which("ffmpeg") is not None
 
 

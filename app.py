@@ -326,12 +326,64 @@ def pull_model():
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
 
+@app.route("/browse_files", methods=["POST"])
+def browse_files():
+    """Browse local filesystem for video files."""
+    from video_utils import SUPPORTED_VIDEO_EXTENSIONS
+    import platform
+
+    data = request.get_json(silent=True) or {}
+    browse_path = data.get("path", "").strip()
+
+    # If no path provided, return drives (Windows) or root (Unix)
+    if not browse_path:
+        if platform.system() == "Windows":
+            import string
+            drives = []
+            for letter in string.ascii_uppercase:
+                drive = f"{letter}:\\"
+                if Path(drive).exists():
+                    drives.append({"name": f"{letter}:\\", "is_dir": True, "path": drive})
+            return jsonify({"entries": drives, "current": ""})
+        else:
+            browse_path = "/"
+
+    p = Path(browse_path)
+    if not p.exists() or not p.is_dir():
+        return jsonify({"error": "Directory not found"}), 404
+
+    entries = []
+    try:
+        for item in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
+            if item.name.startswith("."):
+                continue
+            if item.is_dir():
+                entries.append({"name": item.name, "is_dir": True, "path": str(item)})
+            elif item.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS:
+                entries.append({"name": item.name, "is_dir": False, "path": str(item)})
+    except PermissionError:
+        return jsonify({"error": "Access denied"}), 403
+
+    # Parent directory
+    parent = str(p.parent) if p.parent != p else ""
+
+    return jsonify({"entries": entries, "current": str(p), "parent": parent})
+
+
 @app.route("/check_ffmpeg", methods=["POST"])
 def check_ffmpeg():
     """Check if ffmpeg/ffprobe are installed."""
     from video_utils import check_ffmpeg_available
     available = check_ffmpeg_available()
     return jsonify({"available": available})
+
+
+@app.route("/install_ffmpeg", methods=["POST"])
+def install_ffmpeg():
+    """Auto-download ffmpeg/ffprobe binaries."""
+    from video_utils import ensure_ffmpeg
+    ok = ensure_ffmpeg()
+    return jsonify({"success": ok})
 
 
 @app.route("/probe_video", methods=["POST"])

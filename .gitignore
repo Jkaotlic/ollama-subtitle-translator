@@ -37,3 +37,6 @@ Thumbs.db
 
 # Docker volumes
 ollama_data/
+
+# Auto-downloaded ffmpeg binaries
+ffmpeg_bin/
