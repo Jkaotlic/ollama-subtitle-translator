@@ -28,7 +28,7 @@ LOG_FORMAT = os.environ.get(
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format=LOG_FORMAT)
 logger = logging.getLogger("srt-translator")
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024 * 1024  # 50GB (video files)
 
 # На Windows используем tempfile для корректного пути
 default_upload_dir = Path(tempfile.gettempdir()) / "srt_translator"
@@ -326,59 +326,6 @@ def pull_model():
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
 
-@app.route("/browse_files", methods=["POST"])
-def browse_files():
-    """Browse local filesystem for video files."""
-    from video_utils import SUPPORTED_VIDEO_EXTENSIONS
-    import platform
-
-    data = request.get_json(silent=True) or {}
-    browse_path = data.get("path", "").strip()
-
-    # If no path provided, return drives (Windows) or root (Unix)
-    if not browse_path:
-        if platform.system() == "Windows":
-            import string
-            drives = []
-            for letter in string.ascii_uppercase:
-                drive = f"{letter}:\\"
-                if Path(drive).exists():
-                    drives.append({"name": f"{letter}:\\", "is_dir": True, "path": drive})
-            return jsonify({"entries": drives, "current": ""})
-        else:
-            browse_path = "/"
-
-    p = Path(browse_path)
-    try:
-        if not p.exists() or not p.is_dir():
-            return jsonify({"error": f"Папка не найдена: {browse_path}"}), 404
-    except OSError as e:
-        return jsonify({"error": f"Не удалось подключиться: {e}"}), 400
-
-    entries = []
-    try:
-        for item in sorted(p.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())):
-            if item.name.startswith("."):
-                continue
-            try:
-                is_dir = item.is_dir()
-            except OSError:
-                continue
-            if is_dir:
-                entries.append({"name": item.name, "is_dir": True, "path": str(item)})
-            elif item.suffix.lower() in SUPPORTED_VIDEO_EXTENSIONS:
-                entries.append({"name": item.name, "is_dir": False, "path": str(item)})
-    except PermissionError:
-        return jsonify({"error": "Нет доступа к этой папке"}), 403
-    except OSError as e:
-        return jsonify({"error": f"Ошибка чтения: {e}"}), 400
-
-    # Parent directory
-    parent = str(p.parent) if p.parent != p else ""
-
-    return jsonify({"entries": entries, "current": str(p), "parent": parent})
-
-
 @app.route("/check_ffmpeg", methods=["POST"])
 def check_ffmpeg():
     """Check if ffmpeg/ffprobe are installed."""
@@ -393,6 +340,26 @@ def install_ffmpeg():
     from video_utils import ensure_ffmpeg
     ok = ensure_ffmpeg()
     return jsonify({"success": ok})
+
+
+@app.route("/upload_video", methods=["POST"])
+def upload_video():
+    """Upload a video file and return its server-side path."""
+    from video_utils import SUPPORTED_VIDEO_EXTENSIONS
+    if "file" not in request.files:
+        return jsonify({"error": "Файл не выбран"}), 400
+
+    file = request.files["file"]
+    ext = Path(file.filename).suffix.lower()
+    if ext not in SUPPORTED_VIDEO_EXTENSIONS:
+        return jsonify({"error": f"Неподдерживаемый формат: {ext}"}), 400
+
+    # Save to temp directory, preserving original name for clarity
+    safe_name = f"{uuid.uuid4()}_{Path(file.filename).name}"
+    dest = UPLOAD_DIR / safe_name
+    file.save(dest)
+    logger.info("video uploaded: %s (%d bytes)", dest, dest.stat().st_size)
+    return jsonify({"path": str(dest)})
 
 
 @app.route("/probe_video", methods=["POST"])
