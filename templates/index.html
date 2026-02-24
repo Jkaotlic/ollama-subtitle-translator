@@ -283,6 +283,14 @@
                 <h3>Выберите видеофайл</h3>
                 <button onclick="closeFileBrowser()" style="width:auto; padding:4px 10px; font-size:18px; background:transparent; border:1px solid #4a5568;">✕</button>
             </div>
+            <div style="display:flex; gap:6px; padding:8px 12px; border-bottom:1px solid #4a5568; background:#0f3460;">
+                <input id="browsePathInput" type="text" placeholder="\\\\NAS\\movies или C:\\Films"
+                       style="flex:1; padding:8px; border-radius:6px; border:1px solid #4a5568;
+                              background:#1a1a2e; color:#eee; font-size:13px;"
+                       onkeydown="if(event.key==='Enter') browseTo(this.value.trim())">
+                <button onclick="browseTo(document.getElementById('browsePathInput').value.trim())"
+                        style="width:auto; padding:8px 14px; font-size:13px; white-space:nowrap;">Перейти</button>
+            </div>
             <div class="modal-path" id="browsePath">Загрузка...</div>
             <div class="modal-body" id="browseList"></div>
             <div class="modal-footer">
@@ -694,6 +702,7 @@
 
                 list.innerHTML = '';
                 pathDisplay.textContent = data.current || 'Компьютер';
+                document.getElementById('browsePathInput').value = data.current || '';
 
                 // Back / Up button
                 if (data.current) {
