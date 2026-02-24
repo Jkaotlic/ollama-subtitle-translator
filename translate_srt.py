@@ -25,7 +25,6 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 import time
 import uuid
-import json
 import logging
 
 logger = logging.getLogger("translate_srt")
@@ -96,14 +95,34 @@ class SrtBlock:
 
 
 def read_srt_file(path: Path) -> Tuple[str, str]:
-    """Читает файл с автоопределением кодировки."""
+    """Читает файл с автоопределением кодировки (chardet → fallback цепочка)."""
     raw = path.read_bytes()
     if raw.startswith(b"\xef\xbb\xbf"):
         return raw.decode("utf-8-sig"), "utf-8-sig"
     try:
         return raw.decode("utf-8"), "utf-8"
     except UnicodeDecodeError:
-        return raw.decode("cp1251"), "cp1251"
+        pass
+    # Пробуем chardet если доступен
+    try:
+        import chardet
+        detected = chardet.detect(raw)
+        enc = detected.get("encoding")
+        if enc:
+            logger.info("chardet detected encoding=%s confidence=%.2f", enc, detected.get("confidence", 0))
+            return raw.decode(enc), enc
+    except ImportError:
+        pass
+    except (UnicodeDecodeError, LookupError):
+        pass
+    # Fallback на распространённые кодировки субтитров
+    for enc in ("cp1251", "latin-1", "iso-8859-2", "shift_jis"):
+        try:
+            return raw.decode(enc), enc
+        except (UnicodeDecodeError, LookupError):
+            continue
+    # Крайний fallback
+    return raw.decode("utf-8", errors="replace"), "utf-8"
 
 
 def parse_srt(text: str) -> List[SrtBlock]:
@@ -179,51 +198,113 @@ def restore_tags(text: str, tags: Dict[str, str]) -> str:
     return text
 
 
+def validate_translation(original: str, translated: str) -> bool:
+    """Check if translated text looks reasonable compared to original.
+
+    Returns True if the translation passes basic quality checks.
+    """
+    if not translated or not translated.strip():
+        return False
+    # Translation is identical to source (model didn't translate)
+    if translated.strip() == original.strip():
+        return False
+    # Translation is absurdly longer than original (likely hallucination)
+    if len(translated) > len(original) * 5 and len(original) > 10:
+        return False
+    # Translation is just punctuation or whitespace
+    stripped = re.sub(r'[\s\W]+', '', translated)
+    if not stripped:
+        return False
+    return True
+
+
 class Translator:
     """Переводчик через Ollama + Translating Gemma"""
-    
-    def __init__(self, model: str = "translategemma:4b", target_lang: str = "Russian", 
-                 ollama_url: str = "http://127.0.0.1:11434", context: str = "", temperature: float = 0.0):
+
+    def __init__(self, model: str = "translategemma:4b", target_lang: str = "Russian",
+                 ollama_url: str = "http://127.0.0.1:11434", context: str = "",
+                 temperature: float = 0.0, source_lang: str = "",
+                 two_pass: bool = False, review_model: str = ""):
         print(f"🔄 Подключение к Ollama ({model})...")
         self.model = model
         self.target_lang = target_lang
+        self.source_lang = source_lang  # пустая строка = автоопределение
         self.base_url = ollama_url
         self.context = context
         self.temperature = float(temperature)
         
-        # Проверяем Ollama
+        self.two_pass = two_pass
+        self.review_model = review_model or model  # по умолчанию та же модель
+
+        # Проверяем Ollama и наличие моделей
         try:
             resp = requests.get(f"{self.base_url}/api/tags", timeout=5)
             if resp.status_code != 200:
                 raise Exception("Ollama не отвечает")
-            models = [m["name"] for m in resp.json().get("models", [])]
-            if not any(model in m for m in models):
-                print(f"⚠️  Модель {model} не найдена. Доступные: {models}")
+            available = [m["name"] for m in resp.json().get("models", [])]
+
+            # Проверяем основную модель
+            if not any(model in m for m in available):
+                print(f"⚠️  Модель {model} не найдена. Доступные: {available}")
                 print(f"   Запустите: ollama pull {model}")
                 sys.exit(1)
+
+            # Проверяем review-модель, если отличается от основной
+            if self.two_pass and self.review_model != model:
+                if not any(self.review_model in m for m in available):
+                    print(f"⚠️  Review-модель {self.review_model} не найдена. Доступные: {available}")
+                    print(f"   Запустите: ollama pull {self.review_model}")
+                    sys.exit(1)
         except requests.exceptions.ConnectionError:
             print("❌ Ollama не запущен!")
             print("   Запустите: ollama serve")
             sys.exit(1)
-        
+        self._cache: Dict[str, str] = {}
+        self._cache_hits = 0
+
         print(f"   Целевой язык: {target_lang}")
+        if two_pass:
+            print(f"   Двухпроходный режим: ДА (review: {self.review_model})")
         if context:
             print(f"   Контекст: {context[:60]}{'...' if len(context) > 60 else ''}")
         print("✅ Подключено!")
-    
-    def translate(self, text: str) -> str:
-        """Переводит текст."""
+
+    def translate(self, text: str, prev_text: str = "", next_text: str = "") -> str:
+        """Переводит текст с учётом соседних субтитров для связности."""
         if not text.strip():
             return text
+
+        # Cache lookup — повторяющиеся фразы переводятся одинаково
+        cache_key = text.strip()
+        if cache_key in self._cache:
+            self._cache_hits += 1
+            logger.debug("translate: cache hit #%d for '%s'", self._cache_hits, cache_key[:40])
+            return self._cache[cache_key]
 
         logger.debug("translate: input length=%d chars", len(text))
         protected_text, tags = protect_tags(text)
 
         # Формируем промпт с учётом контекста
+        parts: List[str] = []
         if self.context and self.context.strip():
-            prompt = f"Context: {self.context.strip()}\n\nTranslate the following segment into {self.target_lang}, keeping the context in mind. Provide only the translation without additional explanation.\n\n{protected_text}"
-        else:
-            prompt = f"Translate the following segment into {self.target_lang}, without additional explanation.\n\n{protected_text}"
+            parts.append(f"Context: {self.context.strip()}")
+
+        # Sliding window: соседние субтитры дают модели понимание диалога
+        if prev_text or next_text:
+            parts.append("Surrounding subtitles for reference (do NOT translate these):")
+            if prev_text:
+                parts.append(f"[BEFORE]: {prev_text}")
+            if next_text:
+                parts.append(f"[AFTER]: {next_text}")
+            parts.append("")
+
+        from_part = f" from {self.source_lang}" if self.source_lang else ""
+        parts.append(
+            f"Translate the following subtitle{from_part} into {self.target_lang}. "
+            "Keep it concise for subtitles. Provide only the translation, nothing else."
+        )
+        parts.append(f"\n{protected_text}")
+        prompt = "\n".join(parts)
 
         payload = {"model": self.model, "prompt": prompt, "stream": False}
         # include temperature if applicable
@@ -259,36 +340,135 @@ class Translator:
             logger.exception("Failed to parse Ollama JSON: model=%s body=%.500s", self.model, body)
             translated = body.strip()
 
-        return restore_tags(translated, tags)
+        # Validate quality; retry once if suspicious
+        if not validate_translation(text, translated):
+            logger.warning("translate: validation failed (original=%d chars, translated=%d chars), retrying once",
+                           len(text), len(translated))
+            retry_resp = post_with_retry(
+                f"{self.base_url}/api/generate", json=payload, timeout=120, attempts=1, backoff=0,
+            )
+            if retry_resp and retry_resp.status_code == 200:
+                try:
+                    translated = retry_resp.json().get("response", "").strip()
+                except Exception:
+                    pass
+            # If still bad, return original to avoid garbage in output
+            if not validate_translation(text, translated):
+                logger.warning("translate: retry also failed validation, returning original text")
+                return text
+
+        result = restore_tags(translated, tags)
+        self._cache[cache_key] = result
+        return result
+
+    def review(self, original: str, translated: str,
+               prev_original: str = "", prev_translated: str = "",
+               next_original: str = "") -> str:
+        """Второй проход: проверяет и правит перевод с учётом контекста.
+
+        Возвращает исправленный перевод или оригинальный, если модель
+        решила, что правок не нужно.
+        """
+        if not translated.strip() or not original.strip():
+            return translated
+
+        parts: List[str] = []
+        if self.context and self.context.strip():
+            parts.append(f"Context: {self.context.strip()}")
+
+        # Окружающие субтитры для понимания диалога
+        if prev_original or next_original:
+            parts.append("Surrounding subtitles for reference:")
+            if prev_original:
+                line = f"[BEFORE]: {prev_original}"
+                if prev_translated:
+                    line += f" → {prev_translated}"
+                parts.append(line)
+            if next_original:
+                parts.append(f"[AFTER]: {next_original}")
+            parts.append("")
+
+        from_part = f" from {self.source_lang}" if self.source_lang else ""
+        parts.append(
+            f"You are reviewing a subtitle translation{from_part} into {self.target_lang}.\n"
+            "Check the translation for:\n"
+            "- Accuracy: does it convey the original meaning?\n"
+            "- Natural flow: does it sound natural in the target language?\n"
+            "- Consistency with surrounding subtitles\n"
+            "- Conciseness: subtitles must be short (max ~42 chars per line)\n\n"
+            f"Original: {original}\n"
+            f"Translation: {translated}\n\n"
+            "If the translation is good, output it exactly as-is.\n"
+            "If it needs fixes, output ONLY the corrected translation, nothing else."
+        )
+        prompt = "\n".join(parts)
+
+        payload = {"model": self.review_model, "prompt": prompt, "stream": False}
+        if self.temperature is not None:
+            payload["temperature"] = float(self.temperature)
+
+        resp = post_with_retry(
+            f"{self.base_url}/api/generate",
+            json=payload,
+            timeout=120,
+            attempts=2,
+            backoff=1.0,
+        )
+
+        if resp is None or resp.status_code != 200:
+            logger.warning("review: request failed, keeping original translation")
+            return translated
+
+        try:
+            reviewed = resp.json().get("response", "").strip()
+        except Exception:
+            return translated
+
+        # Валидация: reviewed должен быть разумным
+        if not reviewed or not reviewed.strip():
+            return translated
+        # Если review вернул что-то в 5 раз длиннее оригинала — мусор
+        if len(reviewed) > len(original) * 5 and len(original) > 10:
+            logger.warning("review: result too long (%d chars vs %d original), keeping first pass",
+                           len(reviewed), len(original))
+            return translated
+
+        if reviewed != translated:
+            logger.info("review: corrected '%s' → '%s'", translated[:50], reviewed[:50])
+
+        return reviewed
 
     def translate_batch(self, texts: List[str], max_chars: int = 2000) -> List[str]:
         """Translate a list of texts as a single request (or multiple chunked requests).
 
+        Uses sliding window context for per-segment fallback to maintain dialogue coherence.
         Returns list of translated strings in the same order.
         """
         if not texts:
             return []
 
-        # Helper to chunk by character length
+        # Helper to chunk by character length, returning (start_index, chunk_texts)
         def make_chunks(texts_list, max_chars_local):
-            chunks = []
-            cur = []
+            chunks: List[Tuple[int, List[str]]] = []
+            cur: List[str] = []
+            cur_start = 0
             cur_len = 0
-            for t in texts_list:
+            for i, t in enumerate(texts_list):
                 if cur and cur_len + len(t) > max_chars_local:
-                    chunks.append(cur)
+                    chunks.append((cur_start, cur))
                     cur = []
+                    cur_start = i
                     cur_len = 0
                 cur.append(t)
                 cur_len += len(t)
             if cur:
-                chunks.append(cur)
+                chunks.append((cur_start, cur))
             return chunks
 
         chunks = make_chunks(texts, max_chars)
         results: List[str] = []
 
-        for chunk_idx, chunk in enumerate(chunks):
+        for chunk_idx, (chunk_start, chunk) in enumerate(chunks):
             logger.info("translate_batch: chunk %d/%d segments=%d", chunk_idx + 1, len(chunks), len(chunk))
             # Protect tags per segment
             protected_list = []
@@ -298,12 +478,21 @@ class Translator:
                 protected_list.append(p)
                 tags_list.append(tags)
 
-            # Build prompt requiring strict JSON output
-            segments_payload = "\n".join([f"<<<SEG>>>{s}<<<ENDSEG>>>" for s in protected_list])
+            # Build prompt with delimiter-based output format
+            segments_payload = "\n|||SEP|||\n".join(protected_list)
+
+            context_line = ""
+            if self.context and self.context.strip():
+                context_line = f"Context: {self.context.strip()}\n\n"
+
+            from_part = f" from {self.source_lang}" if self.source_lang else ""
             prompt = (
-                f"Translate the following segments into {self.target_lang}.\n"
-                "Preserve placeholders exactly (e.g. __TAG_xxx__).\n"
-                "Return ONLY a JSON object with key \"segments\" that is an array of strings in the same order.\n\n"
+                f"{context_line}"
+                f"Translate each segment below{from_part} into {self.target_lang}.\n"
+                "Keep translations concise — suitable for subtitles (max ~42 characters per line).\n"
+                "Preserve any placeholders exactly (e.g. __TAG_xxx__).\n"
+                "Separate translated segments with |||SEP||| on its own line.\n"
+                "Output ONLY the translations, nothing else.\n\n"
                 f"{segments_payload}"
             )
 
@@ -331,48 +520,49 @@ class Translator:
                 results.extend(chunk)
                 continue
 
-            # Try to parse JSON from response
+            # Parse delimiter-based response
             translated_list: List[str] = []
             try:
                 data = resp.json()
-                # Ollama envelope: actual model output is in data["response"]
                 model_response = data.get("response", "")
                 logger.debug("translate_batch: raw model response (first 500 chars): %.500s", model_response)
 
-                # Strip markdown code fences (```json ... ```)
-                cleaned_response = model_response.strip()
-                if cleaned_response.startswith("```"):
-                    # Remove opening fence (```json or ```)
-                    first_nl = cleaned_response.index("\n")
-                    cleaned_response = cleaned_response[first_nl + 1:]
-                if cleaned_response.endswith("```"):
-                    cleaned_response = cleaned_response[:-3].strip()
+                # Split by delimiter
+                parts = [p.strip() for p in model_response.split("|||SEP|||")]
+                # Remove empty leading/trailing parts
+                parts = [p for p in parts if p]
 
-                # Try to parse the model's response as JSON
-                try:
-                    parsed = json.loads(cleaned_response)
-                    translated_list = parsed.get("segments", [])
-                except (json.JSONDecodeError, ValueError):
-                    # Try to find JSON object inside the response
-                    try:
-                        start = cleaned_response.index("{")
-                        end = cleaned_response.rindex("}")
-                        parsed = json.loads(cleaned_response[start:end + 1])
-                        translated_list = parsed.get("segments", [])
-                    except (ValueError, json.JSONDecodeError):
-                        translated_list = []
+                if len(parts) == len(chunk):
+                    translated_list = parts
+                else:
+                    translated_list = []
             except Exception:
                 translated_list = []
+
+            # Validate each translated segment in the batch
+            if translated_list and len(translated_list) == len(chunk):
+                bad_count = sum(1 for orig, tr in zip(chunk, translated_list) if not validate_translation(orig, tr))
+                if bad_count > len(chunk) * 0.5:
+                    logger.warning("translate_batch: chunk %d/%d has %d/%d bad translations, falling back",
+                                   chunk_idx + 1, len(chunks), bad_count, len(chunk))
+                    translated_list = []  # force fallback
+                elif bad_count > 0:
+                    logger.info("translate_batch: chunk %d/%d has %d/%d suspicious translations",
+                                chunk_idx + 1, len(chunks), bad_count, len(chunk))
 
             if translated_list and len(translated_list) == len(chunk):
                 logger.info("translate_batch: chunk %d/%d parsed %d segments OK", chunk_idx + 1, len(chunks), len(translated_list))
             else:
-                # JSON parsing failed or wrong count — fallback to one-by-one translation
-                logger.warning("translate_batch: chunk %d/%d JSON parse failed (got %d, expected %d), falling back to per-segment translation",
-                               chunk_idx + 1, len(chunks), len(translated_list), len(chunk))
+                # Delimiter parsing failed or wrong count — fallback to one-by-one with sliding window
+                logger.warning("translate_batch: chunk %d/%d delimiter parse failed (got %d, expected %d), falling back to per-segment translation",
+                               chunk_idx + 1, len(chunks), len(translated_list) if translated_list else 0, len(chunk))
                 translated_list = []
                 for seg_idx, seg in enumerate(chunk):
-                    translated = self.translate(seg)
+                    # Sliding window: pass neighboring subtitles for coherence
+                    global_idx = chunk_start + seg_idx
+                    prev_text = texts[global_idx - 1] if global_idx > 0 else ""
+                    next_text = texts[global_idx + 1] if global_idx < len(texts) - 1 else ""
+                    translated = self.translate(seg, prev_text=prev_text, next_text=next_text)
                     translated_list.append(translated)
                     logger.debug("translate_batch fallback: seg %d/%d done", seg_idx + 1, len(chunk))
 
@@ -381,25 +571,48 @@ class Translator:
                 restored = restore_tags(translated, tags)
                 results.append(restored)
 
+        # Second pass: review each translation for quality
+        if self.two_pass and results:
+            logger.info("translate_batch: starting review pass (%d segments)", len(results))
+            reviewed: List[str] = []
+            for i, (orig, trans) in enumerate(zip(texts, results)):
+                prev_orig = texts[i - 1] if i > 0 else ""
+                prev_trans = results[i - 1] if i > 0 else ""
+                next_orig = texts[i + 1] if i < len(texts) - 1 else ""
+                corrected = self.review(
+                    orig, trans,
+                    prev_original=prev_orig,
+                    prev_translated=prev_trans,
+                    next_original=next_orig,
+                )
+                reviewed.append(corrected)
+            logger.info("translate_batch: review pass done")
+            return reviewed
+
         return results
 
 
 def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russian",
-                  model: str = "translategemma:4b", batch_size: int = 10, context: str = "") -> None:
+                  model: str = "translategemma:4b", batch_size: int = 10,
+                  context: str = "", source_lang: str = "",
+                  two_pass: bool = False, review_model: str = "") -> None:
     """Переводит SRT файл."""
     print(f"📖 Читаю: {input_path}")
     text, encoding = read_srt_file(input_path)
     blocks = parse_srt(text)
     print(f"   Субтитров: {len(blocks)}")
-    
-    translator = Translator(model, target_lang, context=context)
+
+    translator = Translator(model, target_lang, context=context, source_lang=source_lang,
+                            two_pass=two_pass, review_model=review_model)
     
     print(f"🔄 Перевод...")
     translated_blocks: List[SrtBlock] = []
     total = len(blocks)
     
     for i, block in enumerate(blocks):
-        translated_text = translator.translate(block.text())
+        prev_text = blocks[i - 1].text() if i > 0 else ""
+        next_text = blocks[i + 1].text() if i < total - 1 else ""
+        translated_text = translator.translate(block.text(), prev_text=prev_text, next_text=next_text)
         translated_lines = tuple(translated_text.split("\n"))
         translated_blocks.append(SrtBlock(
             index=block.index,
@@ -431,7 +644,10 @@ def main():
     parser.add_argument("--model", "-m", type=str, default="translategemma:4b", help="Модель Ollama")
     parser.add_argument("--batch", "-b", type=int, default=10, help="Размер батча для прогресса")
     parser.add_argument("--context", "-c", type=str, default="", help="Контекст для перевода (например: 'Сериал о больнице с медицинской терминологией')")
-    
+    parser.add_argument("--source-lang", "-s", type=str, default="", help="Исходный язык (например: English). По умолчанию — автоопределение")
+    parser.add_argument("--two-pass", action="store_true", help="Двухпроходный перевод: translate → review")
+    parser.add_argument("--review-model", type=str, default="", help="Модель для review-прохода (по умолчанию — та же)")
+
     args = parser.parse_args()
     
     if not args.input.exists():
@@ -446,7 +662,8 @@ def main():
         stem = args.input.stem
         output_path = args.input.with_name(f"{stem}.{lang_code}.srt")
     
-    translate_srt(args.input, output_path, args.lang, args.model, args.batch, args.context)
+    translate_srt(args.input, output_path, args.lang, args.model, args.batch, args.context,
+                  args.source_lang, args.two_pass, args.review_model)
 
 
 if __name__ == "__main__":

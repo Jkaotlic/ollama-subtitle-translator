@@ -73,7 +73,7 @@ class TestReadAndParseSrt:
         s = "1\n00:00:01,000 --> 00:00:02,000\nПривет\n\n"
         p.write_bytes(s.encode("cp1251"))
         txt, enc = ts.read_srt_file(p)
-        assert enc == "cp1251"
+        assert enc.lower().replace("-", "") in ("cp1251", "windows1251")
         blocks = ts.parse_srt(txt)
         assert len(blocks) == 1
         assert "Привет" in blocks[0].lines[0]

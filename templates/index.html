@@ -96,6 +96,16 @@
         .emoji { font-size: 48px; margin-bottom: 12px; }
         .file-name { color: #68d391; font-weight: 500; }
         .info { font-size: 12px; color: #718096; text-align: center; margin-top: 20px; }
+        .pull-container {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            border-radius: 8px;
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid #667eea;
+        }
+        .pull-container .progress-bar { margin-top: 8px; }
+        .pull-status { font-size: 13px; color: #a0aec0; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -116,29 +126,59 @@
                          background: #0f3460; color: #eee; font-size: 14px; margin-bottom: 16px; 
                          resize: vertical; min-height: 80px; font-family: inherit;"></textarea>
         
-        <label for="lang">Язык перевода:</label>
-        <select id="lang">
-            {% for lang in languages %}
-            <option value="{{ lang }}" {% if lang == 'Russian' %}selected{% endif %}>{{ lang }}</option>
-            {% endfor %}
-        </select>
+        <div style="display:flex; gap:12px;">
+            <div style="flex:1;">
+                <label for="source_lang">Язык оригинала:</label>
+                <select id="source_lang">
+                    <option value="" selected>Автоопределение</option>
+                    {% for lang in languages %}
+                    <option value="{{ lang }}">{{ lang }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="flex:1;">
+                <label for="lang">Язык перевода:</label>
+                <select id="lang">
+                    {% for lang in languages %}
+                    <option value="{{ lang }}" {% if lang == 'Russian' %}selected{% endif %}>{{ lang }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
         
         <label for="model">Модель:</label>
         <input id="model" type="text" value="translategemma:4b" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
 
-        <div style="display:flex; gap:12px;">
+        <div style="display:flex; gap:12px; align-items:end;">
             <div style="flex:1;">
                 <label for="temperature">Temperature:</label>
                 <input id="temperature" type="number" step="0.01" min="0" max="1" value="0" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
             </div>
             <div style="width:140px;">
-                <label for="chunk_size">Chunk size (chars):</label>
+                <label for="chunk_size">Chunk size:</label>
                 <input id="chunk_size" type="number" value="2000" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
             </div>
         </div>
-        
+
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                <input type="checkbox" id="two_pass" style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
+                Двухпроходный перевод (translate + review)
+            </label>
+        </div>
+        <div id="reviewModelRow" style="display:none; margin-bottom:16px;">
+            <label for="review_model">Модель для review (необязательно):</label>
+            <input id="review_model" type="text" placeholder="По умолчанию — та же модель" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee;">
+        </div>
+
         <button id="translateBtn" disabled>🚀 Перевести</button>
-        
+
+        <div class="pull-container" id="pullContainer">
+            <div id="pullTitle" style="font-weight:500;">Скачивание модели...</div>
+            <div class="progress-bar"><div class="progress-fill" id="pullFill"></div></div>
+            <div class="pull-status" id="pullStatus"></div>
+        </div>
+
         <div class="progress-container" id="progressContainer">
             <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
             <div class="progress-text" id="progressText">Подготовка...</div>
@@ -165,7 +205,12 @@
         const status = document.getElementById('status');
         
         let selectedFile = null, currentTaskId = null;
-        
+
+        // Toggle review_model field visibility
+        document.getElementById('two_pass').addEventListener('change', (e) => {
+            document.getElementById('reviewModelRow').style.display = e.target.checked ? 'block' : 'none';
+        });
+
         dropZone.addEventListener('click', () => fileInput.click());
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -187,23 +232,133 @@
             status.style.display = 'none';
         }
         
+        // --- Model check & pull helpers ---
+        async function checkModel(modelName) {
+            const resp = await fetch('/check_model', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({model: modelName}),
+            });
+            const data = await resp.json();
+            return data.exists;
+        }
+
+        function pullModel(modelName) {
+            return new Promise((resolve, reject) => {
+                const pullContainer = document.getElementById('pullContainer');
+                const pullFill = document.getElementById('pullFill');
+                const pullStatus = document.getElementById('pullStatus');
+                const pullTitle = document.getElementById('pullTitle');
+
+                pullContainer.style.display = 'block';
+                pullTitle.textContent = `Скачивание модели ${modelName}...`;
+                pullFill.style.width = '0%';
+                pullStatus.textContent = 'Подключение...';
+
+                const es = new EventSource('/pull_model_sse?' + new URLSearchParams({model: modelName}));
+                // fallback: use fetch + POST
+                fetch('/pull_model', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model: modelName}),
+                }).then(response => {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buf = '';
+                    function read() {
+                        reader.read().then(({done, value}) => {
+                            if (done) {
+                                pullContainer.style.display = 'none';
+                                resolve();
+                                return;
+                            }
+                            buf += decoder.decode(value, {stream: true});
+                            const lines = buf.split('\n');
+                            buf = lines.pop();
+                            for (const line of lines) {
+                                if (!line.startsWith('data: ')) continue;
+                                try {
+                                    const d = JSON.parse(line.slice(6));
+                                    if (d.status === 'error') {
+                                        pullContainer.style.display = 'none';
+                                        reject(d.error);
+                                        return;
+                                    }
+                                    if (d.status === 'done') {
+                                        pullFill.style.width = '100%';
+                                        pullStatus.textContent = 'Готово!';
+                                        setTimeout(() => { pullContainer.style.display = 'none'; resolve(); }, 500);
+                                        return;
+                                    }
+                                    pullFill.style.width = d.pct + '%';
+                                    const mb = d.completed ? (d.completed / 1024 / 1024).toFixed(0) : 0;
+                                    const totalMb = d.total ? (d.total / 1024 / 1024).toFixed(0) : '?';
+                                    pullStatus.textContent = `${d.status} — ${mb} / ${totalMb} MB (${d.pct}%)`;
+                                } catch(e) {}
+                            }
+                            read();
+                        });
+                    }
+                    read();
+                }).catch(e => {
+                    pullContainer.style.display = 'none';
+                    reject(e.message || 'Ошибка скачивания');
+                });
+            });
+        }
+
+        async function ensureModels() {
+            const model = document.getElementById('model').value;
+            const twoPass = document.getElementById('two_pass').checked;
+            const reviewModel = document.getElementById('review_model').value;
+
+            // Check main model
+            const mainExists = await checkModel(model);
+            if (!mainExists) {
+                await pullModel(model);
+            }
+            // Check review model if two-pass and different
+            if (twoPass && reviewModel && reviewModel !== model) {
+                const revExists = await checkModel(reviewModel);
+                if (!revExists) {
+                    await pullModel(reviewModel);
+                }
+            }
+        }
+
+        // --- Main translate flow ---
         translateBtn.addEventListener('click', async () => {
             if (!selectedFile) return;
             translateBtn.disabled = true;
+            downloadBtn.style.display = 'none';
+            status.style.display = 'none';
+
+            // Step 1: ensure models are available
+            try {
+                await ensureModels();
+            } catch (e) {
+                showError('Не удалось скачать модель: ' + e);
+                return;
+            }
+
+            // Step 2: start translation
             progressContainer.style.display = 'block';
             progressFill.style.width = '0%';
             progressText.textContent = 'Запуск...';
-            downloadBtn.style.display = 'none';
-            status.style.display = 'none';
-            
+
             const formData = new FormData();
             formData.append('file', selectedFile);
             formData.append('lang', document.getElementById('lang').value);
+            formData.append('source_lang', document.getElementById('source_lang').value);
             formData.append('context', document.getElementById('context').value);
             formData.append('model', document.getElementById('model').value);
             formData.append('temperature', document.getElementById('temperature').value);
             formData.append('chunk_size', document.getElementById('chunk_size').value);
-            
+            if (document.getElementById('two_pass').checked) {
+                formData.append('two_pass', 'on');
+                formData.append('review_model', document.getElementById('review_model').value);
+            }
+
             try {
                 const resp = await fetch('/translate', { method: 'POST', body: formData });
                 const data = await resp.json();
@@ -212,12 +367,12 @@
                 pollProgress();
             } catch (e) { showError('Ошибка подключения'); }
         });
-        
+
         async function pollProgress() {
             try {
                 const resp = await fetch(`/progress/${currentTaskId}`);
                 const data = await resp.json();
-                
+
                 if (data.status === 'done') {
                     progressFill.style.width = '100%';
                     progressText.textContent = 'Готово!';
@@ -234,9 +389,9 @@
                 }
             } catch (e) { showError('Потеря соединения'); }
         }
-        
+
         downloadBtn.addEventListener('click', () => { if (currentTaskId) window.location.href = `/download/${currentTaskId}`; });
-        
+
         function showError(msg) {
             status.textContent = '❌ ' + msg;
             status.className = 'status error';

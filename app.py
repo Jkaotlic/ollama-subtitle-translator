@@ -13,7 +13,7 @@ import sys
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, Response, stream_with_context
 import requests
 import logging
 import tempfile
@@ -104,8 +104,10 @@ cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
 cleanup_thread.start()
 
 
-def translate_worker(task_id: str, input_path: Path, output_path: Path, 
-                     target_lang: str, model: str, context: str = ""):
+def translate_worker(task_id: str, input_path: Path, output_path: Path,
+                     target_lang: str, model: str, context: str = "",
+                     source_lang: str = "", two_pass: bool = False,
+                     review_model: str = ""):
     """Фоновый worker для перевода."""
     t0 = time.time()
     try:
@@ -169,7 +171,7 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         temp = tasks.get(task_id, {}).get("temperature")
         chunk_size = tasks.get(task_id, {}).get("chunk_size", 2000)
 
-        translator = Translator(model=model, target_lang=target_lang, ollama_url=OLLAMA_URL, context=context, temperature=temp if temp is not None else 0.0)
+        translator = Translator(model=model, target_lang=target_lang, ollama_url=OLLAMA_URL, context=context, temperature=temp if temp is not None else 0.0, source_lang=source_lang, two_pass=two_pass, review_model=review_model)
 
         texts = ["\n".join(b["lines"]) for b in blocks]
         # chunking handled inside translate_batch
@@ -229,7 +231,10 @@ def translate():
     target_lang = request.form.get("lang", "Russian")
     model = request.form.get("model", "translategemma:4b")
     context = request.form.get("context", "")
-    
+    source_lang = request.form.get("source_lang", "")
+    two_pass = request.form.get("two_pass", "") == "on"
+    review_model = request.form.get("review_model", "")
+
     task_id = str(uuid.uuid4())
     input_path = UPLOAD_DIR / f"{task_id}_input.srt"
     
@@ -255,7 +260,7 @@ def translate():
     }
     
     # Запускаем фоновую задачу в пуле воркеров
-    future = executor.submit(translate_worker, task_id, input_path, output_path, target_lang, model, context)
+    future = executor.submit(translate_worker, task_id, input_path, output_path, target_lang, model, context, source_lang, two_pass, review_model)
     tasks[task_id]["future"] = future
     
     return jsonify({"task_id": task_id})
@@ -269,6 +274,56 @@ def progress(task_id):
     # Exclude non-serializable fields (e.g. Future) from JSON response
     safe = {k: v for k, v in tasks[task_id].items() if k != "future"}
     return jsonify(safe)
+
+
+@app.route("/check_model", methods=["POST"])
+def check_model():
+    """Проверяет наличие модели в Ollama."""
+    model_name = request.json.get("model", "")
+    if not model_name:
+        return jsonify({"exists": False, "error": "Имя модели не указано"}), 400
+    try:
+        resp = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if resp.status_code != 200:
+            return jsonify({"exists": False, "error": "Ollama не отвечает"}), 502
+        available = [m["name"] for m in resp.json().get("models", [])]
+        exists = any(model_name in m for m in available)
+        return jsonify({"exists": exists, "available": available})
+    except requests.exceptions.ConnectionError:
+        return jsonify({"exists": False, "error": "Ollama не запущен"}), 502
+
+
+@app.route("/pull_model", methods=["POST"])
+def pull_model():
+    """Скачивает модель через Ollama API, стримит прогресс как SSE."""
+    model_name = request.json.get("model", "")
+    if not model_name:
+        return jsonify({"error": "Имя модели не указано"}), 400
+
+    def generate():
+        try:
+            with requests.post(
+                f"{OLLAMA_URL}/api/pull",
+                json={"name": model_name},
+                stream=True,
+                timeout=600,
+            ) as r:
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    import json as _json
+                    data = _json.loads(line)
+                    status = data.get("status", "")
+                    total = data.get("total", 0)
+                    completed = data.get("completed", 0)
+                    pct = int(completed / total * 100) if total else 0
+                    yield f"data: {_json.dumps({'status': status, 'pct': pct, 'total': total, 'completed': completed})}\n\n"
+                yield f"data: {_json.dumps({'status': 'done', 'pct': 100})}\n\n"
+        except Exception as e:
+            import json as _json
+            yield f"data: {_json.dumps({'status': 'error', 'error': str(e)})}\n\n"
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
 
 @app.route("/download/<task_id>")
