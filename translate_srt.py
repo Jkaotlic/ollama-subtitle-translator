@@ -225,49 +225,38 @@ class Translator:
                  ollama_url: str = "http://127.0.0.1:11434", context: str = "",
                  temperature: float = 0.0, source_lang: str = "",
                  two_pass: bool = False, review_model: str = ""):
-        print(f"🔄 Подключение к Ollama ({model})...")
         self.model = model
         self.target_lang = target_lang
         self.source_lang = source_lang  # пустая строка = автоопределение
         self.base_url = ollama_url
         self.context = context
         self.temperature = float(temperature)
-        
+
         self.two_pass = two_pass
         self.review_model = review_model or model  # по умолчанию та же модель
-
-        # Проверяем Ollama и наличие моделей
-        try:
-            resp = requests.get(f"{self.base_url}/api/tags", timeout=5)
-            if resp.status_code != 200:
-                raise Exception("Ollama не отвечает")
-            available = [m["name"] for m in resp.json().get("models", [])]
-
-            # Проверяем основную модель
-            if not any(model in m for m in available):
-                print(f"⚠️  Модель {model} не найдена. Доступные: {available}")
-                print(f"   Запустите: ollama pull {model}")
-                sys.exit(1)
-
-            # Проверяем review-модель, если отличается от основной
-            if self.two_pass and self.review_model != model:
-                if not any(self.review_model in m for m in available):
-                    print(f"⚠️  Review-модель {self.review_model} не найдена. Доступные: {available}")
-                    print(f"   Запустите: ollama pull {self.review_model}")
-                    sys.exit(1)
-        except requests.exceptions.ConnectionError:
-            print("❌ Ollama не запущен!")
-            print("   Запустите: ollama serve")
-            sys.exit(1)
         self._cache: Dict[str, str] = {}
         self._cache_hits = 0
 
-        print(f"   Целевой язык: {target_lang}")
-        if two_pass:
-            print(f"   Двухпроходный режим: ДА (review: {self.review_model})")
-        if context:
-            print(f"   Контекст: {context[:60]}{'...' if len(context) > 60 else ''}")
-        print("✅ Подключено!")
+        # Quick connectivity check (model availability already verified by web UI)
+        try:
+            resp = requests.get(f"{self.base_url}/api/tags", timeout=3)
+            if resp.status_code != 200:
+                raise Exception("Ollama не отвечает")
+            # When called from CLI, verify model exists
+            if sys.stdin and sys.stdin.isatty():
+                available = [m["name"] for m in resp.json().get("models", [])]
+                if not any(model in m for m in available):
+                    print(f"⚠️  Модель {model} не найдена. Доступные: {available}")
+                    print(f"   Запустите: ollama pull {model}")
+                    sys.exit(1)
+                if self.two_pass and self.review_model != model:
+                    if not any(self.review_model in m for m in available):
+                        print(f"⚠️  Review-модель {self.review_model} не найдена.")
+                        sys.exit(1)
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError("Ollama не запущен! Запустите: ollama serve")
+
+        logger.info("Translator ready: model=%s lang=%s two_pass=%s", model, target_lang, two_pass)
 
     def translate(self, text: str, prev_text: str = "", next_text: str = "") -> str:
         """Переводит текст с учётом соседних субтитров для связности."""
