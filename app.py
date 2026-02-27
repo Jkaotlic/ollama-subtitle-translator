@@ -4,7 +4,6 @@
 """
 
 import os
-import re
 import uuid
 import threading
 import time
@@ -54,7 +53,6 @@ LANGUAGES = {
 }
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
-TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}.*$")
 
 
 def cleanup_worker():
@@ -109,93 +107,51 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
                      source_lang: str = "", two_pass: bool = False,
                      review_model: str = ""):
     """Фоновый worker для перевода."""
+    from translate_srt import Translator, read_srt_file, parse_srt, write_srt, SrtBlock
+
     t0 = time.time()
     try:
         logger.info("task=%s action=start model=%s lang=%s", task_id, model, target_lang)
         tasks[task_id]["status"] = "running"
-        
-        # Читаем файл
-        raw = input_path.read_bytes()
-        if raw.startswith(b"\xef\xbb\xbf"):
-            text = raw.decode("utf-8-sig")
-        else:
-            try:
-                text = raw.decode("utf-8")
-            except:
-                text = raw.decode("cp1251")
-        
-        # Парсим SRT
-        text = text.replace("\r\n", "\n").replace("\r", "\n")
-        lines = text.split("\n")
-        
-        blocks = []
-        i = 0
-        n = len(lines)
-        
-        while i < n:
-            while i < n and lines[i].strip() == "":
-                i += 1
-            if i >= n:
-                break
-            
-            idx_line = lines[i].strip()
-            if not idx_line.isdigit():
-                i += 1
-                continue
-            index = int(idx_line)
-            i += 1
-            
-            if i >= n:
-                break
-            
-            timecode = lines[i].strip()
-            if not TIME_RE.match(timecode):
-                i += 1
-                continue
-            i += 1
-            
-            text_lines = []
-            while i < n and lines[i].strip() != "":
-                text_lines.append(lines[i])
-                i += 1
-            
-            blocks.append({"index": index, "timecode": timecode, "lines": text_lines})
-            i += 1
-        
-        tasks[task_id]["total"] = len(blocks)
-        
-        # Переводим пакетно через Translator.translate_batch
-        from translate_srt import Translator
 
-        # Read runtime options passed from UI if any are stored in task metadata
-        temp = tasks.get(task_id, {}).get("temperature")
+        # Читаем и парсим SRT (единая логика из translate_srt.py)
+        text, encoding = read_srt_file(input_path)
+        blocks = parse_srt(text)
+        tasks[task_id]["total"] = len(blocks)
+
+        # Runtime-настройки из UI
+        temp = tasks.get(task_id, {}).get("temperature", 0.0)
         chunk_size = tasks.get(task_id, {}).get("chunk_size", 2000)
 
-        translator = Translator(model=model, target_lang=target_lang, ollama_url=OLLAMA_URL, context=context, temperature=temp if temp is not None else 0.0, source_lang=source_lang, two_pass=two_pass, review_model=review_model)
+        translator = Translator(
+            model=model, target_lang=target_lang, ollama_url=OLLAMA_URL,
+            context=context, temperature=temp, source_lang=source_lang,
+            two_pass=two_pass, review_model=review_model,
+        )
 
-        texts = ["\n".join(b["lines"]) for b in blocks]
-        # chunking handled inside translate_batch
-        translated_texts = translator.translate_batch(texts, max_chars=int(chunk_size))
+        texts = [b.text() for b in blocks]
 
+        # Progress callback — обновляет задачу в реальном времени
+        def update_progress(done: int, total: int):
+            tasks[task_id]["current"] = done
+
+        translated_texts = translator.translate_batch(
+            texts, max_chars=int(chunk_size), on_progress=update_progress,
+        )
+
+        # Собираем результат
         translated_blocks = []
-        for idx, (block, translated) in enumerate(zip(blocks, translated_texts)):
-            translated_blocks.append({
-                "index": block["index"],
-                "timecode": block["timecode"],
-                "lines": translated.split("\n") if isinstance(translated, str) else [str(translated)]
-            })
-            tasks[task_id]["current"] = idx + 1
-        
-        # Сохраняем
-        out_lines = []
-        for b in translated_blocks:
-            out_lines.append(str(b["index"]))
-            out_lines.append(b["timecode"])
-            out_lines.extend(b["lines"])
-            out_lines.append("")
-        
-        output_path.write_text("\n".join(out_lines).rstrip("\n") + "\n", encoding="utf-8")
-        
+        for block, translated_text in zip(blocks, translated_texts):
+            translated_blocks.append(SrtBlock(
+                index=block.index,
+                timecode=block.timecode,
+                lines=tuple(translated_text.split("\n")),
+            ))
+        tasks[task_id]["current"] = len(translated_blocks)
+
+        # Сохраняем (единая логика из translate_srt.py)
+        write_srt(translated_blocks, output_path, "utf-8")
+
         tasks[task_id]["status"] = "done"
         tasks[task_id]["output_file"] = str(output_path)
         tasks[task_id]["completed_at"] = time.time()
@@ -213,7 +169,7 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
                 logger.info("task=%s action=auto_save dest=%s", task_id, dest)
             except Exception as copy_err:
                 logger.warning("task=%s action=auto_save_failed error=%s", task_id, copy_err)
-        
+
     except Exception as e:
         elapsed = time.time() - t0
         logger.exception("task=%s action=error elapsed=%.1fs error=%s", task_id, elapsed, e)

@@ -216,4 +216,4 @@ class TestResolveVideoPath:
     def test_with_video_dir(self, monkeypatch):
         monkeypatch.setattr(vu, "VIDEO_DIR", "/videos")
         result = vu.resolve_video_path("/home/user/movie.mkv")
-        assert result == "/videos/home/user/movie.mkv"
+        assert Path(result) == Path("/videos/home/user/movie.mkv")
