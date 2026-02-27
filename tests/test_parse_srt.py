@@ -379,18 +379,20 @@ class TestTranslateBatch:
         tr = self._make_translator(monkeypatch)
         assert tr.translate_batch([]) == []
 
-    def test_batch_json_contract(self, monkeypatch):
+    def test_batch_delimiter_contract(self, monkeypatch):
+        """Batch translation parses |||SEP||| delimited response correctly."""
         tr = self._make_translator(monkeypatch)
         segments = ["Hello", "World"]
 
         def mock_post(url, json=None, timeout=180):
-            resp_data = {"response": json_mod.dumps({"segments": ["Привет", "Мир"]})}
+            resp_data = {"response": "Привет\n|||SEP|||\nМир"}
             return _MockResp(200, resp_data)
 
-        import json as json_mod
         monkeypatch.setattr(ts.requests, "post", mock_post)
         results = tr.translate_batch(segments, max_chars=5000)
         assert len(results) == 2
+        assert results[0] == "Привет"
+        assert results[1] == "Мир"
 
     def test_batch_fallback_on_failure(self, monkeypatch):
         tr = self._make_translator(monkeypatch)

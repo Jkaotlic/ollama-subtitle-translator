@@ -586,7 +586,7 @@ class Translator:
 
 
 def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russian",
-                  model: str = "translategemma:4b", batch_size: int = 10,
+                  model: str = "translategemma:4b",
                   context: str = "", source_lang: str = "",
                   two_pass: bool = False, review_model: str = "",
                   chunk_size: int = 2000) -> None:
@@ -636,7 +636,7 @@ def main():
     parser.add_argument("--out", "-o", type=Path, default=None, help="Выходной файл")
     parser.add_argument("--lang", "-l", type=str, default="Russian", help="Целевой язык")
     parser.add_argument("--model", "-m", type=str, default="translategemma:4b", help="Модель Ollama")
-    parser.add_argument("--batch", "-b", type=int, default=10, help="Размер батча для прогресса")
+    parser.add_argument("--chunk-size", type=int, default=2000, help="Макс. символов в одном запросе к модели (по умолчанию 2000)")
     parser.add_argument("--context", "-c", type=str, default="", help="Контекст для перевода (например: 'Сериал о больнице с медицинской терминологией')")
     parser.add_argument("--source-lang", "-s", type=str, default="", help="Исходный язык (например: English). По умолчанию — автоопределение")
     parser.add_argument("--two-pass", action="store_true", help="Двухпроходный перевод: translate → review")
@@ -656,8 +656,8 @@ def main():
         stem = args.input.stem
         output_path = args.input.with_name(f"{stem}.{lang_code}.srt")
     
-    translate_srt(args.input, output_path, args.lang, args.model, args.batch, args.context,
-                  args.source_lang, args.two_pass, args.review_model)
+    translate_srt(args.input, output_path, args.lang, args.model, args.context,
+                  args.source_lang, args.two_pass, args.review_model, args.chunk_size)
 
 
 if __name__ == "__main__":
