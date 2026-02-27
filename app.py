@@ -497,7 +497,8 @@ if __name__ == "__main__":
         # signals may not be available on some platforms
         pass
 
+    debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
     try:
-        app.run(host="0.0.0.0", port=port, debug=True)
+        app.run(host="0.0.0.0", port=port, debug=debug)
     except KeyboardInterrupt:
         _shutdown_handler(None, None)

@@ -158,7 +158,7 @@ docker-compose up --build
 VIDEO_HOST_DIR=/path/to/your/media docker-compose up --build
 ```
 
-Подробнее см. [README_DOCKER.md](README_DOCKER.md).
+Подробнее см. [README_DOCKER.md](docs/README_DOCKER.md).
 
 ---
 

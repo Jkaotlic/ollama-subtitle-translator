@@ -539,8 +539,6 @@
                 pullFill.style.width = '0%';
                 pullStatus.textContent = 'Подключение...';
 
-                const es = new EventSource('/pull_model_sse?' + new URLSearchParams({model: modelName}));
-                // fallback: use fetch + POST
                 fetch('/pull_model', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
