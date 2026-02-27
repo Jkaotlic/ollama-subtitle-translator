@@ -837,6 +837,7 @@
                     progressFill.style.width = '100%';
                     progressText.textContent = 'Готово!';
                     downloadBtn.style.display = 'block';
+                    downloadBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     translateBtn.disabled = false;
                     if (data.saved_to) {
                         showSuccess('Перевод сохранён: ' + data.saved_to);
@@ -848,7 +849,13 @@
                 } else {
                     const pct = data.total > 0 ? (data.current / data.total * 100) : 0;
                     progressFill.style.width = pct + '%';
-                    progressText.textContent = `${data.current} / ${data.total} субтитров`;
+                    const phase = data.phase || 'translating';
+                    if (phase === 'reviewing') {
+                        progressText.textContent = `Проверка: ${data.current} / ${data.total} субтитров (проход 2/2)`;
+                    } else {
+                        progressText.textContent = `Перевод: ${data.current} / ${data.total} субтитров` +
+                            (data.two_pass_enabled ? ' (проход 1/2)' : '');
+                    }
                     setTimeout(pollProgress, 500);
                 }
             } catch (e) { showError('Потеря соединения'); }

@@ -428,11 +428,13 @@ class Translator:
         return reviewed
 
     def translate_batch(self, texts: List[str], max_chars: int = 2000,
-                        on_progress: Optional["callable"] = None) -> List[str]:
+                        on_progress: Optional["callable"] = None,
+                        on_phase: Optional["callable"] = None) -> List[str]:
         """Translate a list of texts as a single request (or multiple chunked requests).
 
         Uses sliding window context for per-segment fallback to maintain dialogue coherence.
         on_progress(done, total) is called after each chunk completes.
+        on_phase(phase_name) is called when the processing phase changes.
         Returns list of translated strings in the same order.
         """
         if not texts:
@@ -567,6 +569,8 @@ class Translator:
         # Second pass: review each translation for quality
         if self.two_pass and results:
             logger.info("translate_batch: starting review pass (%d segments)", len(results))
+            if on_phase:
+                on_phase("reviewing")
             reviewed: List[str] = []
             for i, (orig, trans) in enumerate(zip(texts, results)):
                 prev_orig = texts[i - 1] if i > 0 else ""
@@ -579,6 +583,8 @@ class Translator:
                     next_original=next_orig,
                 )
                 reviewed.append(corrected)
+                if on_progress:
+                    on_progress(i + 1, len(texts))
             logger.info("translate_batch: review pass done")
             return reviewed
 
@@ -602,16 +608,26 @@ def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russi
 
     print(f"🔄 Перевод...")
     texts = [b.text() for b in blocks]
+    cli_phase = "translating"
 
     def cli_progress(done: int, total_count: int):
         pct = done / total_count * 100 if total_count else 100
         bar_len = 30
         filled = int(bar_len * done / total_count) if total_count else bar_len
         bar = "█" * filled + "░" * (bar_len - filled)
-        print(f"   [{bar}] {done}/{total_count} ({pct:.1f}%)", end="\r")
+        label = "Проверка" if cli_phase == "reviewing" else "Перевод"
+        print(f"   {label}: [{bar}] {done}/{total_count} ({pct:.1f}%)", end="\r")
+
+    def cli_on_phase(phase: str):
+        nonlocal cli_phase
+        cli_phase = phase
+        if phase == "reviewing":
+            print()
+            print(f"🔍 Проверка перевода (проход 2/2)...")
 
     translated_texts = translator.translate_batch(texts, max_chars=chunk_size,
-                                                  on_progress=cli_progress)
+                                                  on_progress=cli_progress,
+                                                  on_phase=cli_on_phase)
 
     translated_blocks: List[SrtBlock] = []
     for block, translated_text in zip(blocks, translated_texts):

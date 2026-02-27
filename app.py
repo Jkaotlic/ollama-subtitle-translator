@@ -135,8 +135,15 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         def update_progress(done: int, total: int):
             tasks[task_id]["current"] = done
 
+        def update_phase(phase: str):
+            tasks[task_id]["phase"] = phase
+            if phase == "reviewing":
+                tasks[task_id]["current"] = 0  # reset progress for review pass
+
+        tasks[task_id]["phase"] = "translating"
         translated_texts = translator.translate_batch(
             texts, max_chars=int(chunk_size), on_progress=update_progress,
+            on_phase=update_phase,
         )
 
         # Собираем результат
@@ -152,9 +159,9 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         # Сохраняем (единая логика из translate_srt.py)
         write_srt(translated_blocks, output_path, "utf-8")
 
-        tasks[task_id]["status"] = "done"
         tasks[task_id]["output_file"] = str(output_path)
         tasks[task_id]["completed_at"] = time.time()
+        tasks[task_id]["status"] = "done"  # set last to avoid race with /progress poll
         elapsed = time.time() - t0
         logger.info("task=%s action=done blocks=%d elapsed=%.1fs", task_id, len(translated_blocks), elapsed)
 
@@ -225,8 +232,9 @@ def translate():
         "created_at": time.time(),
         "temperature": float(temperature) if temperature is not None and temperature != "" else 0.0,
         "chunk_size": int(chunk_size) if chunk_size is not None and chunk_size != "" else 2000,
+        "two_pass_enabled": two_pass,
     }
-    
+
     # Запускаем фоновую задачу в пуле воркеров
     future = executor.submit(translate_worker, task_id, input_path, output_path, target_lang, model, context, source_lang, two_pass, review_model)
     tasks[task_id]["future"] = future
@@ -426,6 +434,7 @@ def extract_and_translate():
         "created_at": time.time(),
         "temperature": float(temperature) if temperature is not None and temperature != "" else 0.0,
         "chunk_size": int(chunk_size) if chunk_size is not None and chunk_size != "" else 2000,
+        "two_pass_enabled": two_pass,
     }
 
     logger.info("task=%s action=extract_and_translate video=%s sub_index=%s lang=%s model=%s",
