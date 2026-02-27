@@ -35,3 +35,17 @@ Thumbs.db
 # Model cache (will be downloaded on first run)
 *.bin
 *.safetensors
+
+# Not needed in Docker image
+.claude/
+.github/
+tests/
+*.md
+LICENSE
+*.bat
+*.sh
+.git/
+.gitignore
+.pytest_cache/
+requirements-dev.txt
+Modelfile

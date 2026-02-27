@@ -40,3 +40,9 @@ ollama_data/
 
 # Auto-downloaded ffmpeg binaries
 ffmpeg_bin/
+
+# Claude Code
+.claude/
+
+# Pytest cache
+.pytest_cache/

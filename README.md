@@ -1,5 +1,11 @@
 # 🎬 Переводчик субтитров (Ollama Subtitle Translator)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](docker-compose.yml)
+
+> **Offline subtitle translator** powered by Ollama + Translating Gemma. No API keys, no cloud — runs entirely on your machine.
+
 Локальный переводчик субтитров (.srt) на базе **Ollama** + **Translating Gemma** (Google).
 Работает полностью офлайн — без API-ключей и облачных сервисов.
 
@@ -159,7 +165,7 @@ VIDEO_HOST_DIR=/path/to/your/media docker-compose up --build
 ## ✅ Тестирование
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 pytest -q
 ```
 
@@ -241,3 +247,9 @@ tests/              — Юнит-тесты (pytest)
 - **Chunk size** ≤ 2000 символов — оптимально для большинства моделей
 - **Двухпроходный перевод** рекомендуется для важных проектов — заметно улучшает связность
 - **Исходный язык** — укажите для более точного перевода (автоопределение работает, но явное указание лучше)
+
+---
+
+## 📄 Лицензия
+
+Этот проект распространяется под лицензией [MIT](LICENSE).
