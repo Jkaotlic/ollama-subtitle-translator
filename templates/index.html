@@ -127,6 +127,23 @@
         .track-item.disabled { opacity: 0.5; cursor: not-allowed; }
         .track-codec { font-size: 12px; color: #718096; }
         .track-warning { font-size: 11px; color: #fc8181; margin-top: 4px; }
+        .model-cards { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+        .model-card {
+            padding: 12px 14px; border: 1px solid #4a5568; border-radius: 8px;
+            cursor: pointer; transition: all 0.2s; display: flex; justify-content: space-between; align-items: center;
+        }
+        .model-card:hover { border-color: #667eea; background: rgba(102,126,234,0.08); }
+        .model-card.selected { border-color: #48bb78; background: rgba(72,187,120,0.1); }
+        .model-card .model-info { flex: 1; }
+        .model-card .model-name { font-weight: 600; font-size: 15px; }
+        .model-card .model-desc { font-size: 12px; color: #a0aec0; margin-top: 2px; }
+        .model-card .model-badge {
+            font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 500; white-space: nowrap;
+        }
+        .model-badge.ready { background: rgba(72,187,120,0.2); color: #68d391; }
+        .model-badge.download { background: rgba(102,126,234,0.2); color: #a3bffa; cursor: pointer; }
+        .model-badge.downloading { background: rgba(237,137,54,0.2); color: #fbd38d; }
+        .model-badge.size { background: rgba(160,174,192,0.15); color: #a0aec0; margin-right: 6px; }
     </style>
 </head>
 <body>
@@ -213,8 +230,18 @@
             </div>
         </div>
         
-        <label for="model">Модель:</label>
-        <input id="model" type="text" value="translategemma:4b" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
+        <label>Модель перевода:</label>
+        <div class="model-cards" id="modelCards"></div>
+        <div style="text-align:center; margin-bottom:12px;">
+            <a href="#" onclick="toggleCustomModel(); return false;" style="color:#667eea; font-size:13px; text-decoration:none;" id="customModelToggle">
+                Указать другую модель вручную
+            </a>
+        </div>
+        <div id="customModelPanel" style="display:none; margin-bottom:16px;">
+            <input id="customModelInput" type="text" placeholder="например: aya23:35b или mistral-small:24b"
+                   style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee;">
+        </div>
+        <input id="model" type="hidden" value="translategemma:4b">
 
         <div style="display:flex; gap:12px; align-items:end;">
             <div style="flex:1;">
@@ -256,8 +283,7 @@
     </div>
     
     <div class="info">
-        Модель: Translating Gemma 4B (Google) — специализированная модель для перевода<br>
-        Поддержка 33 языков
+        TranslateGemma (Google) — специализированные модели для перевода, 55 языков
     </div>
 
     <script>
@@ -274,6 +300,126 @@
         let selectedFile = null, currentTaskId = null;
         let currentMode = 'srt';
         let selectedTrack = null;
+
+        // --- Model presets ---
+        const MODEL_PRESETS = [
+            { id: 'translategemma:4b',  name: 'TranslateGemma 4B',  size: '3.3 GB', ram: '~8 GB RAM',  desc: 'Быстрая, хороший баланс скорости и качества' },
+            { id: 'translategemma:12b', name: 'TranslateGemma 12B', size: '8.1 GB', ram: '~16 GB RAM', desc: 'Лучшее качество — бьёт даже Gemma 3 27B' },
+            { id: 'translategemma:27b', name: 'TranslateGemma 27B', size: '17 GB',  ram: '~32 GB RAM', desc: 'Максимальное качество, требует мощное железо' },
+        ];
+        let selectedModelId = 'translategemma:4b';
+        const modelStatuses = {}; // id -> 'unknown' | 'checking' | 'ready' | 'missing' | 'downloading'
+
+        function renderModelCards() {
+            const container = document.getElementById('modelCards');
+            container.innerHTML = '';
+            MODEL_PRESETS.forEach(m => {
+                const card = document.createElement('div');
+                card.className = 'model-card' + (selectedModelId === m.id ? ' selected' : '');
+                const st = modelStatuses[m.id] || 'unknown';
+                let badgeHtml = '';
+                if (st === 'ready') badgeHtml = '<span class="model-badge ready">Готова</span>';
+                else if (st === 'downloading') badgeHtml = '<span class="model-badge downloading">Скачивается...</span>';
+                else if (st === 'missing') badgeHtml = '<span class="model-badge download" data-model="' + m.id + '">Скачать</span>';
+                else badgeHtml = '<span class="model-badge size" style="opacity:0.5;">...</span>';
+
+                card.innerHTML = `
+                    <div class="model-info">
+                        <div class="model-name">${m.name}</div>
+                        <div class="model-desc">${m.desc}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span class="model-badge size">${m.size}</span>
+                        ${badgeHtml}
+                    </div>
+                `;
+                card.addEventListener('click', (e) => {
+                    // If click on "download" badge — download, don't select
+                    if (e.target.classList.contains('download')) {
+                        e.stopPropagation();
+                        downloadPresetModel(m.id);
+                        return;
+                    }
+                    selectPresetModel(m.id);
+                });
+                container.appendChild(card);
+            });
+        }
+
+        function selectPresetModel(id) {
+            selectedModelId = id;
+            document.getElementById('model').value = id;
+            document.getElementById('customModelPanel').style.display = 'none';
+            document.getElementById('customModelToggle').textContent = 'Указать другую модель вручную';
+            document.getElementById('customModelInput').value = '';
+            renderModelCards();
+        }
+
+        function toggleCustomModel() {
+            const panel = document.getElementById('customModelPanel');
+            const toggle = document.getElementById('customModelToggle');
+            const isVisible = panel.style.display !== 'none';
+            panel.style.display = isVisible ? 'none' : 'block';
+            toggle.textContent = isVisible ? 'Указать другую модель вручную' : 'Выбрать из списка';
+            if (!isVisible) {
+                // Deselect preset
+                selectedModelId = '';
+                renderModelCards();
+                document.getElementById('customModelInput').focus();
+            } else {
+                selectPresetModel('translategemma:4b');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const customInput = document.getElementById('customModelInput');
+            customInput.addEventListener('input', () => {
+                const v = customInput.value.trim();
+                if (v) {
+                    document.getElementById('model').value = v;
+                    selectedModelId = '';
+                    renderModelCards();
+                }
+            });
+        });
+
+        async function checkPresetModels() {
+            for (const m of MODEL_PRESETS) {
+                modelStatuses[m.id] = 'checking';
+            }
+            renderModelCards();
+            try {
+                const resp = await fetch('/check_model', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model: '__list_all__'}),
+                });
+                const data = await resp.json();
+                const available = data.available || [];
+                for (const m of MODEL_PRESETS) {
+                    modelStatuses[m.id] = available.some(a => a.includes(m.id)) ? 'ready' : 'missing';
+                }
+            } catch (e) {
+                for (const m of MODEL_PRESETS) modelStatuses[m.id] = 'unknown';
+            }
+            renderModelCards();
+        }
+
+        async function downloadPresetModel(id) {
+            modelStatuses[id] = 'downloading';
+            renderModelCards();
+            try {
+                await pullModel(id);
+                modelStatuses[id] = 'ready';
+            } catch (e) {
+                modelStatuses[id] = 'missing';
+                showError('Не удалось скачать модель: ' + e);
+            }
+            renderModelCards();
+        }
+
+        // Initial render + check
+        renderModelCards();
+        checkPresetModels();
 
         function switchMode(mode) {
             currentMode = mode;
@@ -598,6 +744,9 @@
             const mainExists = await checkModel(model);
             if (!mainExists) {
                 await pullModel(model);
+                // Refresh badge status after download
+                if (modelStatuses[model] !== undefined) modelStatuses[model] = 'ready';
+                renderModelCards();
             }
             // Check review model if two-pass and different
             if (twoPass && reviewModel && reviewModel !== model) {
