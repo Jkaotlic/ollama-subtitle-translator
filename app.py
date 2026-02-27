@@ -223,12 +223,14 @@ def translate():
     # Pass through temperature and chunk_size from UI
     temperature = request.form.get("temperature")
     chunk_size = request.form.get("chunk_size")
+    save_dir = request.form.get("save_dir", "").strip()
 
     tasks[task_id] = {
         "status": "starting",
         "current": 0,
         "total": 0,
         "output_name": output_name,
+        "save_dir": save_dir,
         "created_at": time.time(),
         "temperature": float(temperature) if temperature is not None and temperature != "" else 0.0,
         "chunk_size": int(chunk_size) if chunk_size is not None and chunk_size != "" else 2000,
@@ -419,11 +421,12 @@ def extract_and_translate():
     output_name = f"{video_stem}.{lang_code}.srt"
     output_path = UPLOAD_DIR / f"{task_id}_{output_name}"
 
-    # Determine save directory: save next to video if path is not a temp upload
-    save_dir = ""
-    video_dir = str(Path(video_path).parent)
-    if not video_dir.startswith(str(UPLOAD_DIR)):
-        save_dir = video_dir
+    # Determine save directory: prefer UI-provided, fallback to next-to-video
+    save_dir = data.get("save_dir", "").strip()
+    if not save_dir:
+        video_dir = str(Path(video_path).parent)
+        if not video_dir.startswith(str(UPLOAD_DIR)):
+            save_dir = video_dir
 
     tasks[task_id] = {
         "status": "starting",
