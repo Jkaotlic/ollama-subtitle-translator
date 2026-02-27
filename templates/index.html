@@ -265,6 +265,13 @@
             <input id="review_model" type="text" placeholder="По умолчанию — та же модель" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee;">
         </div>
 
+        <label for="save_dir">Сохранить рядом с файлом (необязательно):</label>
+        <input id="save_dir" type="text" placeholder="Путь к папке, напр. D:\Сериалы\The Pitt\S01"
+               style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
+        <div style="font-size:11px; color:#718096; margin-top:-12px; margin-bottom:16px;">
+            Перевод автоматически скопируется в эту папку. При ручном вводе пути к видео — заполняется автоматически.
+        </div>
+
         <button id="translateBtn" disabled>🚀 Перевести</button>
 
         <div class="pull-container" id="pullContainer">
@@ -480,6 +487,14 @@
         async function probeVideo() {
             const videoPath = document.getElementById('videoPath').value.trim();
             if (!videoPath) return;
+
+            // Auto-fill save_dir from video path (parent directory)
+            const saveDirInput = document.getElementById('save_dir');
+            if (!saveDirInput.value.trim()) {
+                const sep = videoPath.includes('/') ? '/' : '\\';
+                const lastSep = videoPath.lastIndexOf(sep);
+                if (lastSep > 0) saveDirInput.value = videoPath.substring(0, lastSep);
+            }
 
             const trackList = document.getElementById('trackList');
             const trackContainer = document.getElementById('trackListContainer');
@@ -791,6 +806,7 @@
                     chunk_size: document.getElementById('chunk_size').value,
                     two_pass: document.getElementById('two_pass').checked,
                     review_model: document.getElementById('review_model').value,
+                    save_dir: document.getElementById('save_dir').value.trim(),
                 };
                 try {
                     const resp = await fetch('/extract_and_translate', {
@@ -818,6 +834,7 @@
                     formData.append('two_pass', 'on');
                     formData.append('review_model', document.getElementById('review_model').value);
                 }
+                formData.append('save_dir', document.getElementById('save_dir').value.trim());
                 try {
                     const resp = await fetch('/translate', { method: 'POST', body: formData });
                     const data = await resp.json();
