@@ -424,20 +424,32 @@ class TestTranslateBatch:
 # ---------------------------------------------------------------------------
 
 class TestTranslatorInit:
-    def test_missing_model_exits(self, monkeypatch):
+    def test_missing_model_exits_in_tty(self, monkeypatch):
+        """In CLI mode (isatty=True), missing model should cause SystemExit."""
         def mock_get(url, timeout=5):
             return _MockResp(200, {"models": [{"name": "other-model"}]})
 
         monkeypatch.setattr(ts.requests, "get", mock_get)
+        monkeypatch.setattr(ts.sys.stdin, "isatty", lambda: True)
         with pytest.raises(SystemExit):
             ts.Translator(model="translategemma:4b", target_lang="Russian", ollama_url="http://fake")
 
-    def test_connection_error_exits(self, monkeypatch):
+    def test_missing_model_no_exit_in_non_tty(self, monkeypatch):
+        """In non-TTY mode (web worker), missing model should NOT exit."""
+        def mock_get(url, timeout=5):
+            return _MockResp(200, {"models": [{"name": "other-model"}]})
+
+        monkeypatch.setattr(ts.requests, "get", mock_get)
+        monkeypatch.setattr(ts.sys.stdin, "isatty", lambda: False)
+        translator = ts.Translator(model="translategemma:4b", target_lang="Russian", ollama_url="http://fake")
+        assert translator.model == "translategemma:4b"
+
+    def test_connection_error_raises(self, monkeypatch):
         import requests as real_requests
 
         def mock_get(url, timeout=5):
             raise real_requests.exceptions.ConnectionError("refused")
 
         monkeypatch.setattr(ts.requests, "get", mock_get)
-        with pytest.raises(SystemExit):
+        with pytest.raises(RuntimeError, match="Ollama"):
             ts.Translator(model="translategemma:4b", target_lang="Russian", ollama_url="http://fake")

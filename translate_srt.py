@@ -427,10 +427,12 @@ class Translator:
 
         return reviewed
 
-    def translate_batch(self, texts: List[str], max_chars: int = 2000) -> List[str]:
+    def translate_batch(self, texts: List[str], max_chars: int = 2000,
+                        on_progress: Optional["callable"] = None) -> List[str]:
         """Translate a list of texts as a single request (or multiple chunked requests).
 
         Uses sliding window context for per-segment fallback to maintain dialogue coherence.
+        on_progress(done, total) is called after each chunk completes.
         Returns list of translated strings in the same order.
         """
         if not texts:
@@ -541,24 +543,26 @@ class Translator:
 
             if translated_list and len(translated_list) == len(chunk):
                 logger.info("translate_batch: chunk %d/%d parsed %d segments OK", chunk_idx + 1, len(chunks), len(translated_list))
+                # Restore tags (batch path — tags were protected before sending to model)
+                for translated, tags in zip(translated_list, tags_list):
+                    restored = restore_tags(translated, tags)
+                    results.append(restored)
             else:
                 # Delimiter parsing failed or wrong count — fallback to one-by-one with sliding window
                 logger.warning("translate_batch: chunk %d/%d delimiter parse failed (got %d, expected %d), falling back to per-segment translation",
                                chunk_idx + 1, len(chunks), len(translated_list) if translated_list else 0, len(chunk))
-                translated_list = []
                 for seg_idx, seg in enumerate(chunk):
                     # Sliding window: pass neighboring subtitles for coherence
                     global_idx = chunk_start + seg_idx
                     prev_text = texts[global_idx - 1] if global_idx > 0 else ""
                     next_text = texts[global_idx + 1] if global_idx < len(texts) - 1 else ""
+                    # self.translate() handles protect/restore tags internally
                     translated = self.translate(seg, prev_text=prev_text, next_text=next_text)
-                    translated_list.append(translated)
+                    results.append(translated)
                     logger.debug("translate_batch fallback: seg %d/%d done", seg_idx + 1, len(chunk))
 
-            # Restore tags
-            for translated, tags in zip(translated_list, tags_list):
-                restored = restore_tags(translated, tags)
-                results.append(restored)
+            if on_progress:
+                on_progress(len(results), len(texts))
 
         # Second pass: review each translation for quality
         if self.two_pass and results:
@@ -584,39 +588,40 @@ class Translator:
 def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russian",
                   model: str = "translategemma:4b", batch_size: int = 10,
                   context: str = "", source_lang: str = "",
-                  two_pass: bool = False, review_model: str = "") -> None:
+                  two_pass: bool = False, review_model: str = "",
+                  chunk_size: int = 2000) -> None:
     """Переводит SRT файл."""
     print(f"📖 Читаю: {input_path}")
     text, encoding = read_srt_file(input_path)
     blocks = parse_srt(text)
-    print(f"   Субтитров: {len(blocks)}")
+    total = len(blocks)
+    print(f"   Субтитров: {total}")
 
     translator = Translator(model, target_lang, context=context, source_lang=source_lang,
                             two_pass=two_pass, review_model=review_model)
-    
+
     print(f"🔄 Перевод...")
+    texts = [b.text() for b in blocks]
+
+    def cli_progress(done: int, total_count: int):
+        pct = done / total_count * 100 if total_count else 100
+        bar_len = 30
+        filled = int(bar_len * done / total_count) if total_count else bar_len
+        bar = "█" * filled + "░" * (bar_len - filled)
+        print(f"   [{bar}] {done}/{total_count} ({pct:.1f}%)", end="\r")
+
+    translated_texts = translator.translate_batch(texts, max_chars=chunk_size,
+                                                  on_progress=cli_progress)
+
     translated_blocks: List[SrtBlock] = []
-    total = len(blocks)
-    
-    for i, block in enumerate(blocks):
-        prev_text = blocks[i - 1].text() if i > 0 else ""
-        next_text = blocks[i + 1].text() if i < total - 1 else ""
-        translated_text = translator.translate(block.text(), prev_text=prev_text, next_text=next_text)
+    for block, translated_text in zip(blocks, translated_texts):
         translated_lines = tuple(translated_text.split("\n"))
         translated_blocks.append(SrtBlock(
             index=block.index,
             timecode=block.timecode,
-            lines=translated_lines
+            lines=translated_lines,
         ))
-        
-        # Прогресс
-        if (i + 1) % batch_size == 0 or i == total - 1:
-            pct = (i + 1) / total * 100
-            bar_len = 30
-            filled = int(bar_len * (i + 1) / total)
-            bar = "█" * filled + "░" * (bar_len - filled)
-            print(f"   [{bar}] {i+1}/{total} ({pct:.1f}%)", end="\r")
-    
+
     print()
     print(f"💾 Сохраняю: {output_path}")
     write_srt(translated_blocks, output_path, "utf-8")
