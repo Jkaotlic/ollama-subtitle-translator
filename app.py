@@ -121,7 +121,7 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
 
         # Runtime-настройки из UI
         temp = tasks.get(task_id, {}).get("temperature", 0.0)
-        chunk_size = tasks.get(task_id, {}).get("chunk_size", 2000)
+        chunk_size = tasks.get(task_id, {}).get("chunk_size", 1000)
 
         translator = Translator(
             model=model, target_lang=target_lang, ollama_url=OLLAMA_URL,

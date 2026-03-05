@@ -427,7 +427,7 @@ class Translator:
 
         return reviewed
 
-    def translate_batch(self, texts: List[str], max_chars: int = 2000,
+    def translate_batch(self, texts: List[str], max_chars: int = 1000,
                         on_progress: Optional["callable"] = None,
                         on_phase: Optional["callable"] = None) -> List[str]:
         """Translate a list of texts as a single request (or multiple chunked requests).
@@ -460,6 +460,7 @@ class Translator:
 
         chunks = make_chunks(texts, max_chars)
         results: List[str] = []
+        prev_chunk_tail: List[str] = []  # last segments of previous chunk for cross-chunk context
 
         for chunk_idx, (chunk_start, chunk) in enumerate(chunks):
             logger.info("translate_batch: chunk %d/%d segments=%d", chunk_idx + 1, len(chunks), len(chunk))
@@ -471,21 +472,33 @@ class Translator:
                 protected_list.append(p)
                 tags_list.append(tags)
 
-            # Build prompt with delimiter-based output format
-            segments_payload = "\n|||SEP|||\n".join(protected_list)
+            # Build prompt with delimiter-based output format and numbered segments
+            numbered = [f"[{i+1}] {seg}" for i, seg in enumerate(protected_list)]
+            segments_payload = "\n|||SEP|||\n".join(numbered)
 
             context_line = ""
             if self.context and self.context.strip():
                 context_line = f"Context: {self.context.strip()}\n\n"
 
+            # Cross-chunk context: show tail of previous chunk so the model keeps coherence
+            prev_context = ""
+            if prev_chunk_tail:
+                prev_lines = "\n".join(prev_chunk_tail)
+                prev_context = (
+                    "Previous subtitles for reference (do NOT translate these, they are already translated):\n"
+                    f"{prev_lines}\n\n"
+                )
+
             from_part = f" from {self.source_lang}" if self.source_lang else ""
             prompt = (
                 f"{context_line}"
+                f"{prev_context}"
                 f"Translate each segment below{from_part} into {self.target_lang}.\n"
                 "Keep translations concise — suitable for subtitles (max ~42 characters per line).\n"
                 "Preserve any placeholders exactly (e.g. __TAG_xxx__).\n"
+                "Each segment is numbered [1], [2], etc. — translate them in the same order.\n"
                 "Separate translated segments with |||SEP||| on its own line.\n"
-                "Output ONLY the translations, nothing else.\n\n"
+                "Output ONLY the translations (without numbers), nothing else.\n\n"
                 f"{segments_payload}"
             )
 
@@ -524,6 +537,8 @@ class Translator:
                 parts = [p.strip() for p in model_response.split("|||SEP|||")]
                 # Remove empty leading/trailing parts
                 parts = [p for p in parts if p]
+                # Strip leading segment numbers like [1], [2] etc. that model may echo back
+                parts = [re.sub(r"^\[\d+\]\s*", "", p) for p in parts]
 
                 if len(parts) == len(chunk):
                     translated_list = parts
@@ -563,6 +578,9 @@ class Translator:
                     results.append(translated)
                     logger.debug("translate_batch fallback: seg %d/%d done", seg_idx + 1, len(chunk))
 
+            # Save tail of current chunk for cross-chunk context in next iteration
+            prev_chunk_tail = chunk[-3:] if len(chunk) >= 3 else chunk[:]
+
             if on_progress:
                 on_progress(len(results), len(texts))
 
@@ -595,7 +613,7 @@ def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russi
                   model: str = "translategemma:4b",
                   context: str = "", source_lang: str = "",
                   two_pass: bool = False, review_model: str = "",
-                  chunk_size: int = 2000) -> None:
+                  chunk_size: int = 1000) -> None:
     """Переводит SRT файл."""
     print(f"📖 Читаю: {input_path}")
     text, encoding = read_srt_file(input_path)
@@ -652,7 +670,7 @@ def main():
     parser.add_argument("--out", "-o", type=Path, default=None, help="Выходной файл")
     parser.add_argument("--lang", "-l", type=str, default="Russian", help="Целевой язык")
     parser.add_argument("--model", "-m", type=str, default="translategemma:4b", help="Модель Ollama")
-    parser.add_argument("--chunk-size", type=int, default=2000, help="Макс. символов в одном запросе к модели (по умолчанию 2000)")
+    parser.add_argument("--chunk-size", type=int, default=1000, help="Макс. символов в одном запросе к модели (по умолчанию 1000)")
     parser.add_argument("--context", "-c", type=str, default="", help="Контекст для перевода (например: 'Сериал о больнице с медицинской терминологией')")
     parser.add_argument("--source-lang", "-s", type=str, default="", help="Исходный язык (например: English). По умолчанию — автоопределение")
     parser.add_argument("--two-pass", action="store_true", help="Двухпроходный перевод: translate → review")
