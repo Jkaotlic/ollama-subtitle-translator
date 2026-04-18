@@ -2,51 +2,51 @@
 
 # 🎬 Ollama Subtitle Translator
 
-**Fully-offline subtitle translator powered by modern 2026 LLMs running locally via [Ollama](https://ollama.com).**
+**Полностью офлайн-переводчик субтитров на современных LLM 2026 года через [Ollama](https://ollama.com).**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](docker-compose.yml)
-[![Tests](https://img.shields.io/badge/tests-126%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/тесты-126%20pass-brightgreen.svg)](tests/)
 [![Models](https://img.shields.io/badge/Gemma%204-e12b-blueviolet.svg)](https://ollama.com/library/gemma4)
 
-**🌍 [English](README.md) · [Русский](README.ru.md)**
+**🌍 [Русский](README.md) · [English](README.en.md)**
 
 </div>
 
 ---
 
-> No API keys. No cloud. No data leaks. Everything runs on your machine — your subtitles never leave your computer.
+> Без API-ключей. Без облака. Без утечек. Всё работает локально — субтитры никогда не покидают твой компьютер.
 >
-> Translate `.srt` files and extract subtitles from videos (MKV / MP4 / AVI / MOV / WebM) between **17 languages** using top-tier 2026 open-weight models: **Gemma 4**, **Qwen 3.5**, **Hunyuan-MT**, **Llama 4 Scout**.
+> Перевод `.srt` файлов и извлечение субтитров из видео (MKV / MP4 / AVI / MOV / WebM) между **17 языками** через топовые открытые модели 2026: **Gemma 4**, **Qwen 3.5**, **Hunyuan-MT**, **Llama 4 Scout**.
 
-## ✨ What makes it different
+## ✨ Что отличает этот проект
 
-- **🧠 Smart Quality Estimation** — LLM-as-judge scores every ambiguous segment 1-5, re-translates weak ones automatically
-- **💾 Persistent Translation Memory** — SQLite cache survives across sessions. Series episodes translate **30-50% faster** from episode 2 onwards
-- **📚 Glossary Enforcement** — Unicode-aware mechanical substitution catches cases where the LLM ignored your glossary (works for Cyrillic, CJK, Arabic)
-- **🎯 Context Analysis** — analyzes entire subtitle file before translation to understand characters, themes, tone
-- **🎭 Genre Presets** — comedy, drama, anime, documentary, action, horror — each with tailored translation instructions
-- **⚡ Parallel Chunks** — multiple chunks translated concurrently with preserved cross-chunk coherence
-- **🔄 Crash Recovery** — resumable progress file, won't lose work if Ollama crashes mid-translation
-- **🎬 Video Support** — probe + extract embedded subtitle tracks via FFmpeg, auto-download on Windows
-- **🌐 Modern Web UI** — dark theme, drag-and-drop, SSE progress streaming, model management with one-click download
+- **🧠 Умная оценка качества** — LLM-as-judge оценивает каждый неоднозначный сегмент по шкале 1-5, автоматически переводит слабые заново
+- **💾 Персистентная Translation Memory** — SQLite-кэш живёт между сеансами. Для сериалов серии 2+ переводятся **на 30-50% быстрее**
+- **📚 Контроль глоссария** — Unicode-aware механическая замена ловит случаи, когда модель проигнорировала словарь (работает для кириллицы, CJK, арабского)
+- **🎯 Анализ контента** — анализирует весь файл до перевода, чтобы понять персонажей, темы, тон
+- **🎭 Пресеты жанров** — comedy, drama, anime, documentary, action, horror — каждый со своими инструкциями
+- **⚡ Параллельные чанки** — одновременная обработка с сохранением связности между чанками
+- **🔄 Восстановление после сбоев** — прогресс сохраняется, при падении Ollama продолжишь с того же места
+- **🎬 Поддержка видео** — probe + извлечение встроенных дорожек через FFmpeg, авто-скачивание на Windows
+- **🌐 Современный веб-UI** — тёмная тема, drag-and-drop, SSE-прогресс, управление моделями в один клик
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Быстрый старт
 
-### 1. Install Ollama
+### 1. Установи Ollama
 
-[Download from ollama.com/download](https://ollama.com/download), then:
+[Скачай с ollama.com/download](https://ollama.com/download), затем:
 
 ```bash
 ollama serve
-ollama pull gemma4:e12b      # Main translation model
-ollama pull qwen3.5:8b        # Auxiliary (glossary, QE, analysis)
+ollama pull gemma4:e12b      # Основная модель перевода
+ollama pull qwen3.5:8b        # Вспомогательная (глоссарий, QE, анализ)
 ```
 
-### 2. Install & Run
+### 2. Установи зависимости и запусти
 
 ```bash
 pip install -r requirements.txt
@@ -54,108 +54,108 @@ python app.py
 # → http://localhost:8847
 ```
 
-**Or CLI:**
+**Или через CLI:**
 
 ```bash
 python translate_srt.py movie.srt                   # EN → RU
 python translate_srt.py movie.srt -l Japanese       # EN → JP
-python translate_srt.py series.srt --genre drama    # With genre preset
+python translate_srt.py series.srt --genre drama    # С пресетом жанра
 ```
 
 ---
 
-## 🤖 Recommended Models (2026)
+## 🤖 Рекомендуемые модели (2026)
 
-| Model | Size | VRAM | Best for | Ollama tag |
+| Модель | Размер | VRAM | Для чего | Ollama тег |
 |---|---|---|---|---|
-| **Gemma 4 12B** ⭐ | 8 GB | ~16 GB | General use, recommended default | `gemma4:e12b` |
-| **Gemma 4 4B** | 3 GB | ~8 GB | Weaker hardware, still 140 languages | `gemma4:e4b` |
-| **Gemma 4 27B** | 17 GB | ~24 GB | Maximum Gemma quality | `gemma4:e27b` |
-| **Qwen 3.5 8B** | 5 GB | ~12 GB | Excellent for CJK, 201 languages | `qwen3.5:8b` |
-| **Qwen 3.5 32B** | 20 GB | ~24 GB | Top-tier for complex content, sarcasm, idioms | `qwen3.5:32b` |
-| **Hunyuan-MT 7B** | 4 GB | ~10 GB | Translation-specialized (Tencent) | `hunyuan-mt:7b` |
-| **Llama 4 Scout** | big | server-grade | **10M context** — whole movie in a single prompt | `llama4:scout` |
+| **Gemma 4 12B** ⭐ | 8 GB | ~16 GB | Общее использование, рекомендуемый дефолт | `gemma4:e12b` |
+| **Gemma 4 4B** | 3 GB | ~8 GB | Слабое железо, всё те же 140 языков | `gemma4:e4b` |
+| **Gemma 4 27B** | 17 GB | ~24 GB | Максимальное качество Gemma | `gemma4:e27b` |
+| **Qwen 3.5 8B** | 5 GB | ~12 GB | Отлично для CJK, 201 язык | `qwen3.5:8b` |
+| **Qwen 3.5 32B** | 20 GB | ~24 GB | Топ-качество для сложного контента, сарказма, идиом | `qwen3.5:32b` |
+| **Hunyuan-MT 7B** | 4 GB | ~10 GB | Специализация под перевод (Tencent) | `hunyuan-mt:7b` |
+| **Llama 4 Scout** | большой | серверное | **10M контекст** — весь фильм одним запросом | `llama4:scout` |
 
-Legacy narrow translation models (`translategemma`, `nllb`, `alma`, `tower-*`) are auto-detected and routed through an auxiliary model for glossary/QE tasks.
+Старые узкоспециализированные модели (`translategemma`, `nllb`, `alma`, `tower-*`) автоматически определяются как translation-only — для глоссария и QE подключается aux-модель.
 
 ---
 
-## ⚡ Performance Expectations
+## ⚡ Скорость перевода
 
-Rough translation time for a 90-min movie (~1500 subtitles) with **Gemma 4 12B**:
+Примерное время на фильм ~90 мин (~1500 субтитров) на **Gemma 4 12B**:
 
-| Hardware | Full pipeline | Subtitles only (`--no-qe`) |
+| Железо | Полный pipeline | Только перевод (`--no-qe`) |
 |---|---|---|
-| RTX 4090 / M2 Max+ | **5-8 min** | 3-5 min |
-| RTX 4070 / 3080 / M2 Pro | **8-15 min** | 5-10 min |
-| RTX 3060 12GB / M1 Pro | **15-25 min** | 10-15 min |
-| CPU only | **30-60 min** | 20-40 min |
+| RTX 4090 / M2 Max+ | **5-8 мин** | 3-5 мин |
+| RTX 4070 / 3080 / M2 Pro | **8-15 мин** | 5-10 мин |
+| RTX 3060 12GB / M1 Pro | **15-25 мин** | 10-15 мин |
+| Только CPU | **30-60 мин** | 20-40 мин |
 
-**Translation Memory bonus**: For TV series, episode 1 takes full time; episodes 2+ hit the cache for recurring phrases, names, and dialogue patterns — **30-50% speedup**.
+**Бонус Translation Memory**: для сериалов первая серия идёт по полному времени, серии 2+ попадают в кэш на повторяющихся фразах и именах — **+30-50% скорости**.
 
-For short clips (~400 subtitles / 24 min episode): multiply by ~0.25-0.3.
-
----
-
-## 🌐 Supported Languages
-
-Russian · English · Chinese · Japanese · Korean · German · French · Spanish · Italian · Portuguese · Turkish · Arabic · Ukrainian · Polish · Dutch · Vietnamese · Thai
-
-Source language is auto-detected, or you can specify it explicitly with `-s <language>`.
+Для короткого ролика (~400 субтитров / 24 мин серия): умножь на ~0.25-0.3.
 
 ---
 
-## 🖥️ Web Interface
+## 🌐 Поддерживаемые языки
 
-Navigate to `http://localhost:8847`. Features:
+Русский · Английский · Китайский · Японский · Корейский · Немецкий · Французский · Испанский · Итальянский · Португальский · Турецкий · Арабский · Украинский · Польский · Голландский · Вьетнамский · Тайский
 
-- **Drag & drop** `.srt` files or extract from videos
-- **Model selector** — visual cards with status (ready / not installed / downloading), click to install
-- **Genre presets** — comedy, drama, anime, documentary, action, horror
-- **Auto-glossary** — LLM identifies character names, places, recurring terms
-- **Context analysis** — pre-translation pass for consistent tone and style
-- **Two-pass mode** — translate + review for maximum quality
-- **Real-time progress** via SSE streaming
-- **Auto-save** to any folder next to your video
-- **Quality estimation** with auto-retranslate of weak segments
-
-### Video subtitle extraction
-
-1. Switch to **"Извлечь из видео"** tab
-2. Select video file (supports network / NAS paths)
-3. Click **"Сканировать"** — lists embedded subtitle tracks
-4. Pick the track, click **"Перевести"**
-
-> Requires **ffmpeg**. On Windows, the app auto-downloads it on first use. macOS: `brew install ffmpeg`. Linux: `apt install ffmpeg`.
+Язык оригинала определяется автоматически, или можешь указать явно через `-s <язык>`.
 
 ---
 
-## 💻 CLI Reference
+## 🖥️ Веб-интерфейс
+
+Открой `http://localhost:8847`. Возможности:
+
+- **Drag & drop** `.srt` файлов или извлечение из видео
+- **Селектор моделей** — карточки со статусами (готова / не установлена / скачивается), клик для установки
+- **Пресеты жанров** — comedy, drama, anime, documentary, action, horror
+- **Авто-глоссарий** — LLM находит имена персонажей, места, повторяющиеся термины
+- **Анализ контекста** — пред-перевод для согласованного тона и стиля
+- **Двухпроходный режим** — перевод + ревью для максимального качества
+- **Прогресс в реальном времени** через SSE-стриминг
+- **Автосохранение** в любую папку рядом с видео
+- **Оценка качества** с авто-переводом слабых сегментов
+
+### Извлечение субтитров из видео
+
+1. Переключись на вкладку **«Извлечь из видео»**
+2. Выбери файл (работают сетевые / NAS пути)
+3. Нажми **«Сканировать»** — покажется список встроенных дорожек
+4. Выбери дорожку, нажми **«Перевести»**
+
+> Нужен **ffmpeg**. На Windows приложение скачивает его автоматически. macOS: `brew install ffmpeg`. Linux: `apt install ffmpeg`.
+
+---
+
+## 💻 CLI
 
 ```bash
-python translate_srt.py <file.srt> [options]
+python translate_srt.py <файл.srt> [опции]
 ```
 
-| Flag | Description | Default |
+| Флаг | Описание | По умолчанию |
 |---|---|---|
-| `-l`, `--lang` | Target language | `Russian` |
-| `-s`, `--source-lang` | Source language (auto-detect if omitted) | — |
-| `-o`, `--out` | Output file | `<input>.<code>.srt` |
-| `-m`, `--model` | Ollama model | `gemma4:e12b` |
-| `-c`, `--context` | Free-form context hint | — |
-| `-g`, `--glossary` | Glossary: `"Tony=Тони, SHIELD=Щ.И.Т."` or path to file | — |
+| `-l`, `--lang` | Целевой язык | `Russian` |
+| `-s`, `--source-lang` | Исходный язык (автоопределение если не указан) | — |
+| `-o`, `--out` | Выходной файл | `<input>.<code>.srt` |
+| `-m`, `--model` | Модель Ollama | `gemma4:e12b` |
+| `-c`, `--context` | Свободный контекст | — |
+| `-g`, `--glossary` | Глоссарий: `"Tony=Тони, SHIELD=Щ.И.Т."` или путь к файлу | — |
 | `--genre` | `comedy` / `drama` / `anime` / `documentary` / `action` / `horror` | — |
-| `--chunk-size` | Max chars per batch request | `1000` |
-| `--context-window` | Neighbor subtitles for coherence | `3` |
-| `--max-cps` | Max chars per second (reading speed check) | `0` (off) |
-| `--two-pass` | Translate + review pass | off |
-| `--review-model` | Model for review pass | same as `--model` |
-| `--aux-model` | Auxiliary model for analysis / glossary / QE | `qwen3.5:8b` |
-| `--no-context-analysis` | Skip pre-translation analysis | — |
-| `--no-qe` | Skip quality estimation + retranslate | — |
-| `--no-auto-glossary` | Skip auto-glossary generation | — |
-| `--tm` | Path to SQLite Translation Memory | `~/.cache/ollama-subtitle-translator/tm.db` |
-| `--no-tm` | Disable Translation Memory | — |
+| `--chunk-size` | Макс. символов в одном батче | `1000` |
+| `--context-window` | Соседние субтитры для связности | `3` |
+| `--max-cps` | Макс. символов в секунду (проверка скорости чтения) | `0` (выкл) |
+| `--two-pass` | Перевод + ревью | выкл |
+| `--review-model` | Модель для ревью | та же что `--model` |
+| `--aux-model` | Вспомогательная модель для анализа / глоссария / QE | `qwen3.5:8b` |
+| `--no-context-analysis` | Пропустить пред-анализ контента | — |
+| `--no-qe` | Пропустить оценку качества + переперевод | — |
+| `--no-auto-glossary` | Пропустить авто-генерацию глоссария | — |
+| `--tm` | Путь к SQLite Translation Memory | `~/.cache/ollama-subtitle-translator/tm.db` |
+| `--no-tm` | Отключить Translation Memory | — |
 
 ---
 
@@ -166,107 +166,107 @@ docker-compose up --build
 # → http://localhost:8847
 ```
 
-To translate subtitles embedded in videos, mount your media folder:
+Чтобы переводить субтитры из видеофайлов, примонтируй медиа-папку:
 
 ```bash
 VIDEO_HOST_DIR=/path/to/media docker-compose up --build
 ```
 
-More: [Docker guide](docs/README_DOCKER.md) · [Portainer deployment](docs/PORTAINER_DEPLOY.md)
+Подробнее: [Docker guide](docs/README_DOCKER.md) · [Деплой через Portainer](docs/PORTAINER_DEPLOY.md)
 
 ---
 
-## ⚙️ Configuration (Environment Variables)
+## ⚙️ Настройки (переменные окружения)
 
-| Variable | Description | Default |
+| Переменная | Описание | По умолчанию |
 |---|---|---|
-| `OLLAMA_URL` | Ollama API URL | `http://127.0.0.1:11434` |
-| `PORT` | Web server port | `8847` |
-| `MAX_WORKERS` | Parallel translation tasks | `3` |
-| `UPLOAD_DIR` | Temp file storage | System temp |
-| `FILE_TTL` | File retention (sec) | `86400` (1 day) |
-| `TASK_TTL` | Task retention (sec) | `86400` (1 day) |
-| `CLEANUP_INTERVAL` | Cleanup worker interval (sec) | `600` (10 min) |
-| `SHUTDOWN_TIMEOUT` | Graceful shutdown timeout (sec) | `30` |
-| `LOG_LEVEL` | Logging verbosity | `INFO` |
-| `VIDEO_DIR` | Allowed video root (Docker only, path-traversal protection) | — |
+| `OLLAMA_URL` | URL Ollama API | `http://127.0.0.1:11434` |
+| `PORT` | Порт веб-сервера | `8847` |
+| `MAX_WORKERS` | Параллельных задач перевода | `3` |
+| `UPLOAD_DIR` | Папка для временных файлов | Системная temp |
+| `FILE_TTL` | Время жизни файлов (сек) | `86400` (1 день) |
+| `TASK_TTL` | Время жизни задач (сек) | `86400` (1 день) |
+| `CLEANUP_INTERVAL` | Интервал cleanup (сек) | `600` (10 мин) |
+| `SHUTDOWN_TIMEOUT` | Таймаут graceful shutdown (сек) | `30` |
+| `LOG_LEVEL` | Уровень логов | `INFO` |
+| `VIDEO_DIR` | Разрешённый корень для видео (Docker, защита от path traversal) | — |
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Архитектура
 
 ```text
-app.py                 — Flask server, REST API, SSE streaming, task manager (thread-safe)
-translate_srt.py       — Translator class, TranslationMemory (SQLite), batch pipeline, CLI
-video_utils.py         — FFmpeg wrapper with secure path resolution
-templates/index.html   — Single-file SPA (dark theme, drag-and-drop, model cards)
-analysis/              — Audit reports (security, bugs, deps, dead-code, architecture)
-tests/                 — 126 unit tests (pytest)
+app.py                 — Flask сервер, REST API, SSE-стриминг, thread-safe менеджер задач
+translate_srt.py       — Класс Translator, TranslationMemory (SQLite), batch pipeline, CLI
+video_utils.py         — Обёртка FFmpeg с безопасным резолвом путей
+templates/index.html   — Single-file SPA (тёмная тема, drag-and-drop, карточки моделей)
+analysis/              — Отчёты аудита (security, bugs, deps, dead-code, architecture)
+tests/                 — 126 юнит-тестов (pytest)
 ```
 
-### Translation Pipeline
+### Pipeline перевода
 
 ```
-SRT parse → auto-glossary → context analysis → batch translate (parallel chunks)
+Парсинг SRT → авто-глоссарий → анализ контекста → batch translate (параллельные чанки)
   ↓
-QE (heuristic + LLM-as-judge) → retranslate weak (score < 3) → CPS validation → save
+QE (heuristic + LLM-as-judge) → переперевод слабых (score < 3) → проверка CPS → сохранение
 ```
 
-Three-tier batch fallback: JSON response → `|||SEP|||` delimiter → per-segment. Alignment check detects content shift and triggers fallback.
+Трёхуровневый fallback: JSON-ответ → разделитель `|||SEP|||` → посегментный. Проверка alignment детектит смещение контента и триггерит fallback.
 
-### Security
+### Безопасность
 
-After the 2026-04 audit, the codebase has hardened:
+После аудита 2026-04 кодовая база ужесточена:
 
-- **Path-traversal protection** on `save_dir` and `resolve_video_path` (allow-list + `relative_to()`)
-- **Per-endpoint size limits** (100 MB for SRT)
+- **Защита от path traversal** на `save_dir` и `resolve_video_path` (allow-list + `relative_to()`)
+- **Per-endpoint лимиты размера** (100 MB для SRT)
 - **Security headers** (X-Content-Type-Options, X-Frame-Options, Referrer-Policy)
-- **Sanitized filenames** (no `/`, `\`, `:`, etc. in user-controlled video_stem)
-- **Docker runs as non-root** (`appuser`, uid 1000)
-- **Thread-safe `tasks` dict** (RLock on all mutations, snapshot reads)
+- **Санитизация имён файлов** (никаких `/`, `\`, `:` в user-controlled video_stem)
+- **Docker запускается от non-root** (`appuser`, uid 1000)
+- **Thread-safe `tasks` dict** (RLock на всех мутациях, snapshot для чтений)
 
-Full findings in [analysis/00-summary.md](analysis/00-summary.md).
+Полный отчёт: [analysis/00-summary.md](analysis/00-summary.md).
 
 ---
 
 ## 💾 Translation Memory
 
-SQLite-backed persistent cache keyed by `(source_text, target_lang, model)`. Automatically deduplicates work across sessions.
+SQLite-кэш по ключу `(source_text, target_lang, model)`. Автоматически дедуплицирует работу между сеансами.
 
-**Why it matters:**
-- Translating a 10-episode series? Episodes 2-10 are 30-50% faster thanks to cached character names and recurring phrases.
-- Re-running on the same file after tweaking settings? Near-instant on cached segments.
-- Shared across all translations on your machine (`~/.cache/ollama-subtitle-translator/tm.db`).
+**Зачем это нужно:**
+- Переводишь сериал из 10 серий? Серии 2-10 переводятся на 30-50% быстрее за счёт кэшированных имён и повторяющихся фраз.
+- Перезапускаешь на том же файле после тюнинга настроек? Почти мгновенно на закэшированных сегментах.
+- Общий кэш на всю систему (`~/.cache/ollama-subtitle-translator/tm.db`).
 
-Disable with `--no-tm`. Auto-prunes to 100k entries (keeps most-used).
+Отключить: `--no-tm`. Автоочистка до 100 тыс. записей (оставляет самые востребованные).
 
 ---
 
-## 🧪 Testing
+## 🧪 Тесты
 
 ```bash
 pip install -r requirements-dev.txt
 pytest -q
-# → 126 passed in ~30s
+# → 126 passed за ~30 сек
 ```
 
-Coverage: SRT parsing (UTF-8, BOM, CP1251, edge cases), tag protection, HTTP retry logic, Ollama mocks, batch pipeline with chunking, `write_srt` round-trip, Translator init, FFmpeg mocks, path-traversal defenses, glossary enforcement, TranslationMemory persistence, LLM-as-judge parsing.
+Покрытие: парсинг SRT (UTF-8, BOM, CP1251, edge cases), защита тегов, retry-логика HTTP, моки Ollama, batch pipeline с чанкингом, round-trip `write_srt`, инициализация Translator, моки FFmpeg, защита от path traversal, glossary enforcement, персистенция TranslationMemory, парсинг LLM-as-judge.
 
 ---
 
-## 💡 Tips
+## 💡 Советы
 
-- **Genre preset** matters a lot — `--genre anime` keeps honorifics, `--genre documentary` enforces formal tone.
-- **Glossary** is enforced mechanically after translation — character names will never leak untranslated.
-- **Temperature 0** for precise / technical content. **0.3–0.5** for creative / dramatic material.
-- **Chunk size** of 800-1200 chars is optimal. Higher = better coherence, lower = faster recovery from bad responses.
-- For **TV series**, keep the same `tm_path` across episodes for max cache benefit.
-- **Two-pass mode** (`--two-pass`) roughly doubles time but catches subtle errors.
-- Use `--no-qe` to skip LLM-as-judge and save ~20-30% time on draft translations.
+- **Пресет жанра** сильно влияет — `--genre anime` сохраняет хонорифики, `--genre documentary` держит формальный тон.
+- **Глоссарий** энфорсится механически после перевода — имена персонажей никогда не утекут непереведёнными.
+- **Temperature 0** — для точного / технического контента. **0.3–0.5** — для художественного / драматического.
+- **Chunk size** 800-1200 символов — оптимально. Больше = лучше связность, меньше = быстрее восстановление при плохих ответах.
+- Для **сериалов** используй один и тот же `tm_path` между сериями — максимальная выгода от кэша.
+- **Двухпроходный режим** (`--two-pass`) удваивает время, но ловит тонкие ошибки.
+- Флаг `--no-qe` пропускает LLM-as-judge и экономит ~20-30% времени на черновых переводах.
 
 ---
 
-## 📜 License
+## 📜 Лицензия
 
 [MIT](LICENSE) © 2026
 
@@ -274,8 +274,8 @@ Coverage: SRT parsing (UTF-8, BOM, CP1251, edge cases), tag protection, HTTP ret
 
 <div align="center">
 
-**Made with ❤️ for people who watch in too many languages**
+**Сделано с ❤️ для тех, кто смотрит сериалы на слишком многих языках**
 
-[Report bug](https://github.com/Jkaotlic/ollama-subtitle-translator/issues) · [Request feature](https://github.com/Jkaotlic/ollama-subtitle-translator/issues)
+[Баг-репорт](https://github.com/Jkaotlic/ollama-subtitle-translator/issues) · [Запросить фичу](https://github.com/Jkaotlic/ollama-subtitle-translator/issues)
 
 </div>
