@@ -213,7 +213,20 @@ class TestResolveVideoPath:
         monkeypatch.setattr(vu, "VIDEO_DIR", "")
         assert vu.resolve_video_path("/home/user/movie.mkv") == "/home/user/movie.mkv"
 
-    def test_with_video_dir(self, monkeypatch):
-        monkeypatch.setattr(vu, "VIDEO_DIR", "/videos")
-        result = vu.resolve_video_path("/home/user/movie.mkv")
-        assert Path(result) == Path("/videos/home/user/movie.mkv")
+    def test_with_video_dir(self, tmp_path, monkeypatch):
+        # Relative path inside VIDEO_DIR is joined and resolved.
+        monkeypatch.setattr(vu, "VIDEO_DIR", str(tmp_path))
+        result = vu.resolve_video_path("movie.mkv")
+        assert Path(result) == (tmp_path / "movie.mkv").resolve()
+
+    def test_path_traversal_rejected(self, tmp_path, monkeypatch):
+        # "../../etc/passwd" must not escape VIDEO_DIR.
+        monkeypatch.setattr(vu, "VIDEO_DIR", str(tmp_path))
+        with pytest.raises(ValueError, match="traversal"):
+            vu.resolve_video_path("../../etc/passwd")
+
+    def test_absolute_path_outside_rejected(self, tmp_path, monkeypatch):
+        # Absolute path that doesn't live inside VIDEO_DIR is refused.
+        monkeypatch.setattr(vu, "VIDEO_DIR", str(tmp_path))
+        with pytest.raises(ValueError, match="traversal"):
+            vu.resolve_video_path("/home/user/movie.mkv")
