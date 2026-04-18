@@ -129,11 +129,30 @@ def check_ffmpeg_available() -> bool:
 
 
 def resolve_video_path(user_path: str) -> str:
-    """Resolve user-provided video path, accounting for Docker volume mounts."""
-    if VIDEO_DIR:
-        resolved = Path(VIDEO_DIR) / user_path.lstrip("/")
-        return str(resolved)
-    return user_path
+    """Resolve user-provided video path, defending against path traversal.
+
+    If VIDEO_DIR is set, user_path is joined with VIDEO_DIR and the resulting
+    path must stay within VIDEO_DIR. Absolute paths or traversal attempts
+    (e.g. "../../etc/passwd") raise ValueError.
+    If VIDEO_DIR is empty, user_path is used as-is (trusted CLI/local use).
+
+    Works on Windows (os-native separators) and POSIX — Path().resolve()
+    normalizes separators automatically.
+    """
+    if not VIDEO_DIR:
+        return user_path
+    base = Path(VIDEO_DIR).resolve()
+    user_p = Path(user_path)
+    # If the user passed an absolute path, refuse unless it's already inside base
+    if user_p.is_absolute():
+        resolved = user_p.resolve()
+    else:
+        resolved = (base / user_p).resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError:
+        raise ValueError(f"Path traversal detected: {user_path!r} escapes VIDEO_DIR")
+    return str(resolved)
 
 
 def probe_subtitle_tracks(video_path: str) -> List[SubtitleTrack]:

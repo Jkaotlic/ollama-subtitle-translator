@@ -46,3 +46,10 @@ ffmpeg_bin/
 
 # Pytest cache
 .pytest_cache/
+
+# Internal working notes (kept locally for history)
+docs/history/
+
+# Translation memory SQLite + session progress
+*.db
+*.progress.json

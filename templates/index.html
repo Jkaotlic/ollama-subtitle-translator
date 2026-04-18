@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎬 Переводчик субтитров</title>
+    <title>Переводчик субтитров</title>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -40,62 +40,56 @@
             background: rgba(72, 187, 120, 0.1);
         }
         label { display: block; margin-bottom: 8px; font-weight: 500; }
-        select {
+        select, input[type="text"], input[type="number"], textarea {
             width: 100%;
             padding: 12px;
             border-radius: 8px;
             border: 1px solid #4a5568;
             background: #0f3460;
             color: #eee;
-            font-size: 16px;
+            font-size: 14px;
             margin-bottom: 16px;
+            font-family: inherit;
         }
+        select { font-size: 16px; }
+        textarea { resize: vertical; min-height: 60px; }
         button {
             width: 100%;
             padding: 14px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
             border: none;
             border-radius: 8px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
             font-size: 16px;
-            font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, opacity 0.2s;
+            transition: all 0.3s;
         }
-        button:hover { transform: translateY(-2px); }
+        button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
         button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .progress-container { display: none; margin-top: 20px; }
         .progress-bar {
             height: 8px;
-            background: #4a5568;
+            background: #2d3748;
             border-radius: 4px;
             overflow: hidden;
-            margin-bottom: 8px;
         }
         .progress-fill {
             height: 100%;
             background: linear-gradient(90deg, #667eea, #764ba2);
-            width: 0%;
+            border-radius: 4px;
             transition: width 0.3s;
+            width: 0%;
         }
-        .progress-text { text-align: center; font-size: 14px; color: #a0aec0; }
+        .progress-text { text-align: center; margin-top: 8px; color: #a0aec0; font-size: 14px; }
         .download-btn {
             display: none;
-            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
             margin-top: 16px;
+            background: linear-gradient(135deg, #48bb78, #38a169);
         }
-        .status {
-            text-align: center;
-            padding: 12px;
-            border-radius: 8px;
-            margin-top: 16px;
-            display: none;
-        }
-        .status.error { background: rgba(245, 101, 101, 0.2); color: #fc8181; }
-        .status.success { background: rgba(72, 187, 120, 0.2); color: #68d391; }
-        .emoji { font-size: 48px; margin-bottom: 12px; }
-        .file-name { color: #68d391; font-weight: 500; }
-        .info { font-size: 12px; color: #718096; text-align: center; margin-top: 20px; }
+        .status { margin-top: 12px; padding: 12px; border-radius: 8px; font-size: 14px; }
+        .status.error { background: rgba(245, 101, 101, 0.15); color: #fc8181; display: none; }
+        .status.success { background: rgba(72, 187, 120, 0.15); color: #68d391; display: none; }
+        .info { text-align: center; color: #718096; font-size: 13px; margin-top: 20px; }
         .pull-container {
             display: none;
             margin-top: 16px;
@@ -144,28 +138,57 @@
         .model-badge.download { background: rgba(102,126,234,0.2); color: #a3bffa; cursor: pointer; }
         .model-badge.downloading { background: rgba(237,137,54,0.2); color: #fbd38d; }
         .model-badge.size { background: rgba(160,174,192,0.15); color: #a0aec0; margin-right: 6px; }
+        .advanced-toggle {
+            text-align: center; margin: 12px 0;
+        }
+        .advanced-toggle a {
+            color: #667eea; font-size: 13px; text-decoration: none;
+        }
+        .advanced-panel {
+            display: none; padding: 16px; border: 1px solid #4a5568; border-radius: 8px;
+            margin-bottom: 16px; background: rgba(15, 52, 96, 0.5);
+        }
+        .advanced-panel.open { display: block; }
+        .file-list { margin-top: 8px; }
+        .file-list-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 6px 10px; background: rgba(72, 187, 120, 0.1); border-radius: 6px;
+            margin-bottom: 4px; font-size: 13px;
+        }
+        .file-list-item .remove-file {
+            cursor: pointer; color: #fc8181; font-size: 16px; padding: 0 4px;
+        }
+        .batch-progress-item {
+            padding: 8px 12px; border: 1px solid #4a5568; border-radius: 6px;
+            margin-bottom: 6px; font-size: 13px;
+        }
+        .batch-progress-item .bp-bar { height: 4px; background: #2d3748; border-radius: 2px; margin-top: 4px; }
+        .batch-progress-item .bp-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 2px; transition: width 0.3s; }
+        .batch-progress-item.done { border-color: #48bb78; }
+        .batch-progress-item.done .bp-fill { background: #48bb78; }
+        .batch-progress-item.error { border-color: #fc8181; }
     </style>
 </head>
 <body>
-    <h1>🎬 Переводчик субтитров</h1>
-    
+    <h1>Переводчик субтитров</h1>
+
     <div class="card">
         <div class="mode-tabs" id="modeTabs">
-            <button class="mode-tab active" data-mode="srt" onclick="switchMode('srt')">📄 Загрузить SRT</button>
-            <button class="mode-tab" data-mode="video" onclick="switchMode('video')">🎬 Извлечь из видео</button>
+            <button class="mode-tab active" data-mode="srt" onclick="switchMode('srt')">Загрузить SRT</button>
+            <button class="mode-tab" data-mode="video" onclick="switchMode('video')">Извлечь из видео</button>
         </div>
 
         <div class="drop-zone" id="dropZone">
-            <div class="emoji">📁</div>
-            <div>Перетащите .srt файл сюда</div>
-            <div style="margin-top: 8px; color: #718096;">или нажмите для выбора</div>
-            <div class="file-name" id="fileName" style="display: none; margin-top: 12px;"></div>
-            <input type="file" id="fileInput" accept=".srt" style="display: none;">
+            <div style="font-size:32px;">📁</div>
+            <div>Перетащите .srt файлы сюда</div>
+            <div style="margin-top: 8px; color: #718096;">или нажмите для выбора (можно несколько)</div>
+            <div class="file-list" id="fileList" style="display: none;"></div>
+            <input type="file" id="fileInput" accept=".srt" multiple style="display: none;">
         </div>
-        
+
         <div class="video-input-panel" id="videoPanel">
             <div class="drop-zone" id="videoDropZone">
-                <div class="emoji">🎬</div>
+                <div style="font-size:32px;">🎬</div>
                 <div>Перетащите видеофайл сюда</div>
                 <div style="margin-top: 8px; color: #718096;">или нажмите для выбора</div>
                 <div class="file-name" id="videoFileName" style="display: none; margin-top: 12px;"></div>
@@ -183,10 +206,9 @@
             <div id="manualPathPanel" style="display:none; margin-bottom:12px;">
                 <div style="display:flex; gap:8px;">
                     <input id="videoPath" type="text" placeholder="\\\\NAS\\movies\\film.mkv или C:\\Films\\movie.mkv"
-                           style="flex:1; padding:12px; border-radius:8px; border:1px solid #4a5568;
-                                  background:#0f3460; color:#eee; font-size:14px;">
+                           style="flex:1; margin-bottom:0;">
                     <button onclick="probeVideo()" style="width:auto; padding:12px 20px; white-space:nowrap;">
-                        🔍 Сканировать
+                        Сканировать
                     </button>
                 </div>
             </div>
@@ -198,28 +220,13 @@
             <div id="ffmpegWarning" style="display:none; text-align:center; padding:12px;">
                 <div style="color:#fc8181; margin-bottom:8px;">ffmpeg/ffprobe не найден. Необходим для извлечения субтитров из видео.</div>
                 <button id="installFfmpegBtn" onclick="installFfmpeg()" style="width:auto; padding:10px 24px; font-size:14px; margin-bottom:8px;">
-                    📥 Скачать ffmpeg автоматически
+                    Скачать ffmpeg автоматически
                 </button>
                 <div id="ffmpegInstallStatus" style="display:none; font-size:13px; color:#a0aec0;"></div>
             </div>
         </div>
 
-        <label for="context">Контекст (необязательно):</label>
-        <textarea id="context" placeholder="Например: Это сериал The Pitt о больнице, много медицинской терминологии" 
-                  style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #4a5568; 
-                         background: #0f3460; color: #eee; font-size: 14px; margin-bottom: 16px; 
-                         resize: vertical; min-height: 80px; font-family: inherit;"></textarea>
-        
         <div style="display:flex; gap:12px;">
-            <div style="flex:1;">
-                <label for="source_lang">Язык оригинала:</label>
-                <select id="source_lang">
-                    <option value="" selected>Автоопределение</option>
-                    {% for lang in languages %}
-                    <option value="{{ lang }}">{{ lang }}</option>
-                    {% endfor %}
-                </select>
-            </div>
             <div style="flex:1;">
                 <label for="lang">Язык перевода:</label>
                 <select id="lang">
@@ -229,7 +236,7 @@
                 </select>
             </div>
         </div>
-        
+
         <label>Модель перевода:</label>
         <div class="model-cards" id="modelCards"></div>
         <div style="text-align:center; margin-bottom:12px;">
@@ -238,41 +245,103 @@
             </a>
         </div>
         <div id="customModelPanel" style="display:none; margin-bottom:16px;">
-            <input id="customModelInput" type="text" placeholder="например: aya23:35b или mistral-small:24b"
-                   style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee;">
+            <input id="customModelInput" type="text" placeholder="например: llama4:scout или mistral-nemo:12b"
+                   style="margin-bottom:0;">
         </div>
-        <input id="model" type="hidden" value="translategemma:4b">
+        <input id="model" type="hidden" value="gemma4:e12b">
 
-        <div style="display:flex; gap:12px; align-items:end;">
-            <div style="flex:1;">
-                <label for="temperature">Temperature:</label>
-                <input id="temperature" type="number" step="0.01" min="0" max="1" value="0" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
+        <label for="save_dir">Сохранить в папку (необязательно):</label>
+        <input id="save_dir" type="text" placeholder="Путь к папке, напр. D:\Сериалы\The Pitt\S01" style="margin-bottom:4px;">
+        <div style="font-size:11px; color:#718096; margin-bottom:16px;">
+            Перевод автоматически скопируется в эту папку.
+        </div>
+
+        <div class="advanced-toggle">
+            <a href="#" onclick="toggleAdvanced(); return false;" id="advancedToggleLink">Расширенные настройки ▼</a>
+        </div>
+        <div class="advanced-panel" id="advancedPanel">
+            <div style="display:flex; gap:12px;">
+                <div style="flex:1;">
+                    <label for="source_lang">Язык оригинала:</label>
+                    <select id="source_lang">
+                        <option value="" selected>Автоопределение</option>
+                        {% for lang in languages %}
+                        <option value="{{ lang }}">{{ lang }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label for="genre">Жанр:</label>
+                    <select id="genre">
+                        <option value="" selected>Автоопределение</option>
+                        <option value="comedy">Комедия</option>
+                        <option value="drama">Драма</option>
+                        <option value="anime">Аниме</option>
+                        <option value="documentary">Документальный</option>
+                        <option value="action">Боевик</option>
+                        <option value="horror">Хоррор</option>
+                    </select>
+                </div>
             </div>
-            <div style="width:140px;">
-                <label for="chunk_size">Chunk size:</label>
-                <input id="chunk_size" type="number" value="2000" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
+
+            <label for="context">Контекст (необязательно):</label>
+            <textarea id="context" placeholder="Например: Это сериал The Pitt о больнице, много медицинской терминологии"
+                      style="min-height:60px;"></textarea>
+
+            <label for="glossary">Глоссарий (необязательно):</label>
+            <textarea id="glossary" placeholder="Tony Stark = Тони Старк&#10;SHIELD = Щ.И.Т."
+                      style="min-height:50px; margin-bottom:4px;"></textarea>
+            <div style="font-size:11px; color:#718096; margin-bottom:16px;">
+                Формат: Оригинал = Перевод (по одной паре на строку). Дополняет авто-глоссарий.
+            </div>
+
+            <div style="display:flex; gap:12px; align-items:end;">
+                <div style="flex:1;">
+                    <label for="temperature">Temperature:</label>
+                    <input id="temperature" type="number" step="0.01" min="0" max="1" value="0">
+                </div>
+                <div style="width:130px;">
+                    <label for="chunk_size">Chunk size:</label>
+                    <input id="chunk_size" type="number" value="2000">
+                </div>
+                <div style="width:110px;">
+                    <label for="context_window">Контекст:</label>
+                    <input id="context_window" type="number" min="1" max="10" value="3" title="Количество соседних субтитров для контекста">
+                </div>
+                <div style="width:110px;">
+                    <label for="max_cps">Макс CPS:</label>
+                    <input id="max_cps" type="number" min="0" max="50" value="21" step="1" title="Макс. символов в секунду (0 = без проверки)">
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                    <input type="checkbox" id="two_pass" style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
+                    Двухпроходный перевод (translate + review)
+                </label>
+            </div>
+            <div id="reviewModelRow" style="display:none; margin-bottom:16px;">
+                <label for="review_model">Модель для review:</label>
+                <input id="review_model" type="text" placeholder="По умолчанию — та же модель">
+            </div>
+
+            <div style="display:flex; flex-wrap:wrap; gap:10px 20px; margin-bottom:4px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                    <input type="checkbox" id="context_analysis" checked style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
+                    Анализ контента
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                    <input type="checkbox" id="auto_glossary" checked style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
+                    Авто-глоссарий
+                </label>
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                    <input type="checkbox" id="qe" checked style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
+                    Проверка качества (QE)
+                </label>
             </div>
         </div>
 
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
-                <input type="checkbox" id="two_pass" style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
-                Двухпроходный перевод (translate + review)
-            </label>
-        </div>
-        <div id="reviewModelRow" style="display:none; margin-bottom:16px;">
-            <label for="review_model">Модель для review (необязательно):</label>
-            <input id="review_model" type="text" placeholder="По умолчанию — та же модель" style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee;">
-        </div>
-
-        <label for="save_dir">Сохранить рядом с файлом (необязательно):</label>
-        <input id="save_dir" type="text" placeholder="Путь к папке, напр. D:\Сериалы\The Pitt\S01"
-               style="width:100%; padding:12px; border-radius:8px; border:1px solid #4a5568; background:#0f3460; color:#eee; margin-bottom:16px;">
-        <div style="font-size:11px; color:#718096; margin-top:-12px; margin-bottom:16px;">
-            Перевод автоматически скопируется в эту папку. При ручном вводе пути к видео — заполняется автоматически.
-        </div>
-
-        <button id="translateBtn" disabled>🚀 Перевести</button>
+        <button id="translateBtn" disabled>Перевести</button>
 
         <div class="pull-container" id="pullContainer">
             <div id="pullTitle" style="font-weight:500;">Скачивание модели...</div>
@@ -284,11 +353,14 @@
             <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
             <div class="progress-text" id="progressText">Подготовка...</div>
         </div>
-        
-        <button class="download-btn" id="downloadBtn">💾 Скачать перевод</button>
+
+        <div id="batchProgressContainer" style="display:none; margin-top:16px;"></div>
+
+        <button class="download-btn" id="downloadBtn">Скачать перевод</button>
+        <div id="batchDownloadContainer" style="display:none; margin-top:12px;"></div>
         <div class="status" id="status"></div>
     </div>
-    
+
     <div class="info">
         TranslateGemma (Google) — специализированные модели для перевода, 55 языков
     </div>
@@ -296,26 +368,45 @@
     <script>
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        const fileName = document.getElementById('fileName');
+        const fileListEl = document.getElementById('fileList');
         const translateBtn = document.getElementById('translateBtn');
         const progressContainer = document.getElementById('progressContainer');
         const progressFill = document.getElementById('progressFill');
         const progressText = document.getElementById('progressText');
         const downloadBtn = document.getElementById('downloadBtn');
         const status = document.getElementById('status');
-        
-        let selectedFile = null, currentTaskId = null;
+
+        let selectedFiles = [];  // array for batch
+        let currentTaskId = null;
         let currentMode = 'srt';
         let selectedTrack = null;
+        let batchTaskIds = [];  // for batch mode
 
-        // --- Model presets ---
+        // --- Advanced panel ---
+        function toggleAdvanced() {
+            const panel = document.getElementById('advancedPanel');
+            const link = document.getElementById('advancedToggleLink');
+            const isOpen = panel.classList.contains('open');
+            panel.classList.toggle('open');
+            link.textContent = isOpen ? 'Расширенные настройки ▼' : 'Скрыть настройки ▲';
+        }
+
+        // --- Model presets (2026) ---
+        // Новые модели: Gemma 4 (140 языков, reasoning), Qwen 3.5 (201 язык),
+        // Hunyuan-MT (специализация под перевод), Llama 4 Scout (10M контекст).
         const MODEL_PRESETS = [
-            { id: 'translategemma:4b',  name: 'TranslateGemma 4B',  size: '3.3 GB', ram: '~8 GB RAM',  desc: 'Быстрая, хороший баланс скорости и качества' },
-            { id: 'translategemma:12b', name: 'TranslateGemma 12B', size: '8.1 GB', ram: '~16 GB RAM', desc: 'Лучшее качество — бьёт даже Gemma 3 27B' },
-            { id: 'translategemma:27b', name: 'TranslateGemma 27B', size: '17 GB',  ram: '~32 GB RAM', desc: 'Максимальное качество, требует мощное железо' },
+            { id: 'gemma4:e12b',   name: 'Gemma 4 12B ⭐',       size: '8 GB',  ram: '~16 GB RAM',   desc: 'Рекомендуется: 140 языков, reasoning, мультимодальная' },
+            { id: 'gemma4:e4b',    name: 'Gemma 4 4B',           size: '3 GB',  ram: '~8 GB RAM',    desc: 'Быстрая для слабого железа, 140 языков' },
+            { id: 'gemma4:e27b',   name: 'Gemma 4 27B',          size: '17 GB', ram: '~24 GB RAM',   desc: 'Максимальное качество Gemma' },
+            { id: 'qwen3.5:8b',    name: 'Qwen 3.5 8B',          size: '5 GB',  ram: '~12 GB RAM',   desc: '201 язык, отличный для CJK и сарказма' },
+            { id: 'qwen3.5:32b',   name: 'Qwen 3.5 32B',         size: '20 GB', ram: '~24 GB RAM',   desc: 'Топ-качество для сложного контента' },
+            { id: 'hunyuan-mt:7b', name: 'Hunyuan-MT 7B',        size: '4 GB',  ram: '~10 GB RAM',   desc: 'Специализация под перевод (Tencent)' },
+            { id: 'llama4:scout',  name: 'Llama 4 Scout',        size: 'большой', ram: 'серверное', desc: '10M контекст — весь фильм одним запросом' },
         ];
-        let selectedModelId = 'translategemma:4b';
-        const modelStatuses = {}; // id -> 'unknown' | 'checking' | 'ready' | 'missing' | 'downloading'
+        // Вспомогательная модель для анализа/глоссария/QE (используется автоматически)
+        const AUX_MODEL = 'qwen3.5:8b';
+        let selectedModelId = 'gemma4:e12b';
+        const modelStatuses = {};
 
         function renderModelCards() {
             const container = document.getElementById('modelCards');
@@ -341,7 +432,6 @@
                     </div>
                 `;
                 card.addEventListener('click', (e) => {
-                    // If click on "download" badge — download, don't select
                     if (e.target.classList.contains('download')) {
                         e.stopPropagation();
                         downloadPresetModel(m.id);
@@ -369,12 +459,11 @@
             panel.style.display = isVisible ? 'none' : 'block';
             toggle.textContent = isVisible ? 'Указать другую модель вручную' : 'Выбрать из списка';
             if (!isVisible) {
-                // Deselect preset
                 selectedModelId = '';
                 renderModelCards();
                 document.getElementById('customModelInput').focus();
             } else {
-                selectPresetModel('translategemma:4b');
+                selectPresetModel('gemma4:e12b');
             }
         }
 
@@ -390,10 +479,10 @@
             });
         });
 
+        let auxModelReady = false;
+
         async function checkPresetModels() {
-            for (const m of MODEL_PRESETS) {
-                modelStatuses[m.id] = 'checking';
-            }
+            for (const m of MODEL_PRESETS) modelStatuses[m.id] = 'checking';
             renderModelCards();
             try {
                 const resp = await fetch('/check_model', {
@@ -405,10 +494,43 @@
                 for (const m of MODEL_PRESETS) {
                     modelStatuses[m.id] = available.some(a => a.includes(m.id)) ? 'ready' : 'missing';
                 }
+                // Check auxiliary model for analysis/glossary/QE
+                auxModelReady = available.some(a => a.includes(AUX_MODEL));
+                renderAuxModelStatus();
             } catch (e) {
                 for (const m of MODEL_PRESETS) modelStatuses[m.id] = 'unknown';
             }
             renderModelCards();
+        }
+
+        function renderAuxModelStatus() {
+            let banner = document.getElementById('auxModelBanner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'auxModelBanner';
+                document.getElementById('modelCards').after(banner);
+            }
+            if (auxModelReady) {
+                banner.innerHTML = `<div style="margin-top:8px; padding:8px 12px; background:rgba(72,187,120,0.15); border-radius:8px; font-size:13px; color:#68d391;">
+                    Вспомогательная модель <b>${AUX_MODEL}</b> — готова (анализ, глоссарий, оценка качества)</div>`;
+            } else {
+                banner.innerHTML = `<div style="margin-top:8px; padding:8px 12px; background:rgba(237,137,54,0.15); border-radius:8px; font-size:13px; color:#ed8936;">
+                    Вспомогательная модель <b>${AUX_MODEL}</b> не найдена — нужна для анализа, глоссария, QE
+                    <button onclick="downloadAuxModel()" style="margin-left:8px; padding:3px 10px; border:1px solid #ed8936; border-radius:6px; background:transparent; color:#ed8936; cursor:pointer; font-size:12px;">Скачать</button></div>`;
+            }
+        }
+
+        async function downloadAuxModel() {
+            const banner = document.getElementById('auxModelBanner');
+            if (banner) banner.innerHTML = `<div style="margin-top:8px; padding:8px 12px; background:rgba(102,126,234,0.15); border-radius:8px; font-size:13px; color:#667eea;">
+                Скачивание <b>${AUX_MODEL}</b>...</div>`;
+            try {
+                await pullModel(AUX_MODEL);
+                auxModelReady = true;
+            } catch (e) {
+                showError('Не удалось скачать вспомогательную модель: ' + e);
+            }
+            renderAuxModelStatus();
         }
 
         async function downloadPresetModel(id) {
@@ -424,10 +546,10 @@
             renderModelCards();
         }
 
-        // Initial render + check
         renderModelCards();
         checkPresetModels();
 
+        // --- Mode switching ---
         function switchMode(mode) {
             currentMode = mode;
             document.querySelectorAll('.mode-tab').forEach(t =>
@@ -454,33 +576,30 @@
             const btn = document.getElementById('installFfmpegBtn');
             const statusEl = document.getElementById('ffmpegInstallStatus');
             btn.disabled = true;
-            btn.textContent = '⏳ Скачивание...';
+            btn.textContent = 'Скачивание...';
             statusEl.style.display = 'block';
             statusEl.textContent = 'Скачивание ffmpeg (~80 MB), подождите...';
             statusEl.style.color = '#a0aec0';
-
             try {
                 const resp = await fetch('/install_ffmpeg', {
                     method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}',
                 });
                 const data = await resp.json();
                 if (data.success) {
-                    statusEl.textContent = '✅ ffmpeg установлен!';
+                    statusEl.textContent = 'ffmpeg установлен!';
                     statusEl.style.color = '#68d391';
-                    setTimeout(() => {
-                        document.getElementById('ffmpegWarning').style.display = 'none';
-                    }, 1500);
+                    setTimeout(() => { document.getElementById('ffmpegWarning').style.display = 'none'; }, 1500);
                 } else {
-                    statusEl.textContent = '❌ Не удалось скачать. Установите вручную: winget install ffmpeg';
+                    statusEl.textContent = 'Не удалось скачать. Установите вручную: winget install ffmpeg';
                     statusEl.style.color = '#fc8181';
                     btn.disabled = false;
-                    btn.textContent = '📥 Скачать ffmpeg автоматически';
+                    btn.textContent = 'Скачать ffmpeg автоматически';
                 }
             } catch (e) {
-                statusEl.textContent = '❌ Ошибка подключения';
+                statusEl.textContent = 'Ошибка подключения';
                 statusEl.style.color = '#fc8181';
                 btn.disabled = false;
-                btn.textContent = '📥 Скачать ffmpeg автоматически';
+                btn.textContent = 'Скачать ffmpeg автоматически';
             }
         }
 
@@ -488,7 +607,6 @@
             const videoPath = document.getElementById('videoPath').value.trim();
             if (!videoPath) return;
 
-            // Auto-fill save_dir from video path (parent directory)
             const saveDirInput = document.getElementById('save_dir');
             if (!saveDirInput.value.trim()) {
                 const sep = videoPath.includes('/') ? '/' : '\\';
@@ -550,7 +668,6 @@
                     trackList.appendChild(div);
                 });
 
-                // Auto-select first text track
                 const firstText = data.tracks.find(t => t.is_text);
                 if (firstText) {
                     const items = trackList.querySelectorAll('.track-item');
@@ -565,7 +682,7 @@
 
         function updateTranslateButton() {
             if (currentMode === 'srt') {
-                translateBtn.disabled = !selectedFile;
+                translateBtn.disabled = selectedFiles.length === 0;
             } else {
                 translateBtn.disabled = !selectedTrack;
             }
@@ -576,25 +693,54 @@
             document.getElementById('reviewModelRow').style.display = e.target.checked ? 'block' : 'none';
         });
 
+        // --- SRT file selection (batch) ---
         dropZone.addEventListener('click', () => fileInput.click());
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
         dropZone.addEventListener('drop', (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && file.name.endsWith('.srt')) selectFile(file);
+            const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.srt'));
+            if (files.length) addFiles(files);
         });
-        fileInput.addEventListener('change', (e) => { if (e.target.files[0]) selectFile(e.target.files[0]); });
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length) addFiles(files);
+        });
 
-        function selectFile(file) {
-            selectedFile = file;
-            fileName.textContent = file.name;
-            fileName.style.display = 'block';
+        function addFiles(files) {
+            for (const f of files) {
+                if (!selectedFiles.find(sf => sf.name === f.name && sf.size === f.size)) {
+                    selectedFiles.push(f);
+                }
+            }
+            renderFileList();
             dropZone.classList.add('has-file');
             downloadBtn.style.display = 'none';
+            document.getElementById('batchDownloadContainer').style.display = 'none';
             status.style.display = 'none';
             updateTranslateButton();
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+            if (selectedFiles.length === 0) dropZone.classList.remove('has-file');
+            updateTranslateButton();
+        }
+
+        function renderFileList() {
+            if (selectedFiles.length === 0) {
+                fileListEl.style.display = 'none';
+                return;
+            }
+            fileListEl.style.display = 'block';
+            fileListEl.innerHTML = selectedFiles.map((f, i) =>
+                `<div class="file-list-item">
+                    <span>${f.name}</span>
+                    <span class="remove-file" onclick="removeFile(${i})">&times;</span>
+                </div>`
+            ).join('');
         }
 
         // --- Video file drop zone ---
@@ -630,7 +776,6 @@
             uploadFill.style.width = '0%';
             uploadText.textContent = 'Загрузка файла...';
 
-            // Reset previous state
             document.getElementById('trackListContainer').style.display = 'none';
             document.getElementById('noTracksMsg').style.display = 'none';
             selectedTrack = null;
@@ -661,18 +806,16 @@
                 const data = JSON.parse(result.responseText);
 
                 if (data.error) {
-                    uploadText.textContent = '❌ ' + data.error;
+                    uploadText.textContent = data.error;
                     uploadText.style.color = '#fc8181';
                     return;
                 }
 
                 uploadProgress.style.display = 'none';
                 document.getElementById('videoPath').value = data.path;
-
-                // Auto-probe after upload
                 probeVideo();
             } catch (e) {
-                uploadText.textContent = '❌ Ошибка загрузки';
+                uploadText.textContent = 'Ошибка загрузки';
                 uploadText.style.color = '#fc8181';
             }
         }
@@ -755,96 +898,228 @@
             const twoPass = document.getElementById('two_pass').checked;
             const reviewModel = document.getElementById('review_model').value;
 
-            // Check main model
             const mainExists = await checkModel(model);
             if (!mainExists) {
                 await pullModel(model);
-                // Refresh badge status after download
                 if (modelStatuses[model] !== undefined) modelStatuses[model] = 'ready';
                 renderModelCards();
             }
-            // Check review model if two-pass and different
             if (twoPass && reviewModel && reviewModel !== model) {
                 const revExists = await checkModel(reviewModel);
-                if (!revExists) {
-                    await pullModel(reviewModel);
-                }
+                if (!revExists) await pullModel(reviewModel);
             }
+        }
+
+        // --- Build form params (shared between single and batch) ---
+        function buildFormData(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('lang', document.getElementById('lang').value);
+            formData.append('source_lang', document.getElementById('source_lang').value);
+            formData.append('context', document.getElementById('context').value);
+            formData.append('glossary', document.getElementById('glossary').value);
+            formData.append('genre', document.getElementById('genre').value);
+            formData.append('model', document.getElementById('model').value);
+            formData.append('temperature', document.getElementById('temperature').value);
+            formData.append('chunk_size', document.getElementById('chunk_size').value);
+            formData.append('context_window', document.getElementById('context_window').value);
+            formData.append('max_cps', document.getElementById('max_cps').value);
+            if (document.getElementById('two_pass').checked) {
+                formData.append('two_pass', 'on');
+                formData.append('review_model', document.getElementById('review_model').value);
+            }
+            if (document.getElementById('context_analysis').checked) formData.append('context_analysis', 'on');
+            if (document.getElementById('auto_glossary').checked) formData.append('auto_glossary', 'on');
+            if (document.getElementById('qe').checked) formData.append('qe', 'on');
+            formData.append('save_dir', document.getElementById('save_dir').value.trim());
+            return formData;
+        }
+
+        function buildVideoPayload() {
+            const vp = document.getElementById('videoPath').value.trim();
+            return {
+                path: vp,
+                sub_index: selectedTrack.sub_index,
+                original_name: document.getElementById('videoFileName').textContent || '',
+                lang: document.getElementById('lang').value,
+                source_lang: document.getElementById('source_lang').value,
+                context: document.getElementById('context').value,
+                glossary: document.getElementById('glossary').value,
+                genre: document.getElementById('genre').value,
+                model: document.getElementById('model').value,
+                temperature: document.getElementById('temperature').value,
+                chunk_size: document.getElementById('chunk_size').value,
+                context_window: document.getElementById('context_window').value,
+                max_cps: document.getElementById('max_cps').value,
+                two_pass: document.getElementById('two_pass').checked,
+                review_model: document.getElementById('review_model').value,
+                save_dir: document.getElementById('save_dir').value.trim(),
+                context_analysis: document.getElementById('context_analysis').checked,
+                auto_glossary: document.getElementById('auto_glossary').checked,
+                qe: document.getElementById('qe').checked,
+            };
         }
 
         // --- Main translate flow ---
         translateBtn.addEventListener('click', async () => {
             translateBtn.disabled = true;
             downloadBtn.style.display = 'none';
+            document.getElementById('batchDownloadContainer').style.display = 'none';
             status.style.display = 'none';
 
-            // Step 1: ensure models are available
-            try {
-                await ensureModels();
-            } catch (e) {
-                showError('Не удалось скачать модель: ' + e);
-                return;
-            }
-
-            // Step 2: start translation
-            progressContainer.style.display = 'block';
-            progressFill.style.width = '0%';
-            progressText.textContent = 'Запуск...';
+            try { await ensureModels(); } catch (e) { showError('Не удалось скачать модель: ' + e); return; }
 
             if (currentMode === 'video') {
-                // Video mode: extract + translate
-                const vp = document.getElementById('videoPath').value.trim();
-                const payload = {
-                    path: vp,
-                    sub_index: selectedTrack.sub_index,
-                    original_name: document.getElementById('videoFileName').textContent || '',
-                    lang: document.getElementById('lang').value,
-                    source_lang: document.getElementById('source_lang').value,
-                    context: document.getElementById('context').value,
-                    model: document.getElementById('model').value,
-                    temperature: document.getElementById('temperature').value,
-                    chunk_size: document.getElementById('chunk_size').value,
-                    two_pass: document.getElementById('two_pass').checked,
-                    review_model: document.getElementById('review_model').value,
-                    save_dir: document.getElementById('save_dir').value.trim(),
-                };
+                // Video mode: single file
+                progressContainer.style.display = 'block';
+                progressFill.style.width = '0%';
+                progressText.textContent = 'Запуск...';
                 try {
                     const resp = await fetch('/extract_and_translate', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(payload),
+                        body: JSON.stringify(buildVideoPayload()),
                     });
                     const data = await resp.json();
                     if (data.error) { showError(data.error); return; }
                     currentTaskId = data.task_id;
                     pollProgress();
                 } catch (e) { showError('Ошибка подключения'); }
-            } else {
-                // SRT mode (existing)
-                if (!selectedFile) return;
-                const formData = new FormData();
-                formData.append('file', selectedFile);
-                formData.append('lang', document.getElementById('lang').value);
-                formData.append('source_lang', document.getElementById('source_lang').value);
-                formData.append('context', document.getElementById('context').value);
-                formData.append('model', document.getElementById('model').value);
-                formData.append('temperature', document.getElementById('temperature').value);
-                formData.append('chunk_size', document.getElementById('chunk_size').value);
-                if (document.getElementById('two_pass').checked) {
-                    formData.append('two_pass', 'on');
-                    formData.append('review_model', document.getElementById('review_model').value);
-                }
-                formData.append('save_dir', document.getElementById('save_dir').value.trim());
+            } else if (selectedFiles.length === 1) {
+                // Single SRT
+                progressContainer.style.display = 'block';
+                progressFill.style.width = '0%';
+                progressText.textContent = 'Запуск...';
                 try {
-                    const resp = await fetch('/translate', { method: 'POST', body: formData });
+                    const resp = await fetch('/translate', { method: 'POST', body: buildFormData(selectedFiles[0]) });
                     const data = await resp.json();
                     if (data.error) { showError(data.error); return; }
                     currentTaskId = data.task_id;
                     pollProgress();
                 } catch (e) { showError('Ошибка подключения'); }
+            } else {
+                // Batch SRT
+                await startBatchTranslation();
             }
         });
 
+        // --- Batch translation ---
+        async function startBatchTranslation() {
+            const batchContainer = document.getElementById('batchProgressContainer');
+            batchContainer.style.display = 'block';
+            batchContainer.innerHTML = '';
+            progressContainer.style.display = 'none';
+            batchTaskIds = [];
+
+            // Start all tasks
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                const itemId = `batch-${i}`;
+                batchContainer.innerHTML += `
+                    <div class="batch-progress-item" id="${itemId}">
+                        <div style="display:flex; justify-content:space-between;">
+                            <span>${file.name}</span>
+                            <span class="bp-status" id="${itemId}-status" style="color:#a0aec0;">В очереди...</span>
+                        </div>
+                        <div class="bp-bar"><div class="bp-fill" id="${itemId}-fill" style="width:0%"></div></div>
+                    </div>`;
+
+                try {
+                    const resp = await fetch('/translate', { method: 'POST', body: buildFormData(file) });
+                    const data = await resp.json();
+                    if (data.error) {
+                        document.getElementById(`${itemId}-status`).textContent = 'Ошибка';
+                        document.getElementById(`${itemId}-status`).style.color = '#fc8181';
+                        document.getElementById(itemId).classList.add('error');
+                        batchTaskIds.push(null);
+                    } else {
+                        batchTaskIds.push(data.task_id);
+                        document.getElementById(`${itemId}-status`).textContent = 'Запущен...';
+                    }
+                } catch (e) {
+                    document.getElementById(`${itemId}-status`).textContent = 'Ошибка подключения';
+                    document.getElementById(`${itemId}-status`).style.color = '#fc8181';
+                    batchTaskIds.push(null);
+                }
+            }
+
+            // Poll all tasks
+            pollBatchProgress();
+        }
+
+        async function pollBatchProgress() {
+            let allDone = true;
+            for (let i = 0; i < batchTaskIds.length; i++) {
+                const taskId = batchTaskIds[i];
+                if (!taskId) continue;
+
+                const itemId = `batch-${i}`;
+                const item = document.getElementById(itemId);
+                if (item.classList.contains('done') || item.classList.contains('error')) continue;
+
+                try {
+                    const resp = await fetch(`/progress/${taskId}`);
+                    const data = await resp.json();
+                    const statusEl = document.getElementById(`${itemId}-status`);
+                    const fillEl = document.getElementById(`${itemId}-fill`);
+
+                    if (data.status === 'done') {
+                        fillEl.style.width = '100%';
+                        const bDoneTime = fmtElapsed(data.started_at);
+                        statusEl.textContent = bDoneTime ? `Готово (${bDoneTime})` : 'Готово';
+                        statusEl.style.color = '#68d391';
+                        item.classList.add('done');
+                    } else if (data.status === 'error') {
+                        statusEl.textContent = data.error || 'Ошибка';
+                        statusEl.style.color = '#fc8181';
+                        item.classList.add('error');
+                    } else {
+                        allDone = false;
+                        const pct = data.total > 0 ? (data.current / data.total * 100) : 0;
+                        fillEl.style.width = pct + '%';
+                        const phase = data.phase || 'translating';
+                        const bElapsed = fmtElapsed(data.started_at);
+                        const bElStr = bElapsed ? ` [${bElapsed}]` : '';
+                        if (phase === 'analyzing') statusEl.textContent = 'Анализ...' + bElStr;
+                        else if (phase === 'glossary') statusEl.textContent = 'Глоссарий...' + bElStr;
+                        else if (phase === 'quality_check') statusEl.textContent = 'Проверка QE...' + bElStr;
+                        else if (phase === 'reviewing') statusEl.textContent = `Проверка ${data.current}/${data.total}` + bElStr;
+                        else statusEl.textContent = `${data.current}/${data.total}` + bElStr;
+                    }
+                } catch (e) {
+                    allDone = false;
+                }
+            }
+
+            if (!allDone) {
+                setTimeout(pollBatchProgress, 500);
+            } else {
+                // All done — show batch download links
+                const dlContainer = document.getElementById('batchDownloadContainer');
+                dlContainer.style.display = 'block';
+                dlContainer.innerHTML = '<div style="font-weight:500; margin-bottom:8px;">Скачать переводы:</div>';
+                for (let i = 0; i < batchTaskIds.length; i++) {
+                    const taskId = batchTaskIds[i];
+                    if (!taskId) continue;
+                    const item = document.getElementById(`batch-${i}`);
+                    if (!item.classList.contains('done')) continue;
+                    dlContainer.innerHTML += `<a href="/download/${taskId}" style="display:block; color:#68d391; margin-bottom:4px; font-size:14px;">${selectedFiles[i].name}</a>`;
+                }
+                translateBtn.disabled = false;
+                showSuccess('Все файлы переведены!');
+            }
+        }
+
+        function fmtElapsed(startedAt) {
+            if (!startedAt) return '';
+            const sec = Math.floor(Date.now() / 1000 - startedAt);
+            if (sec < 0) return '';
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return m > 0 ? `${m}m ${s}s` : `${s}s`;
+        }
+
+        // --- Single file progress ---
         async function pollProgress() {
             try {
                 const resp = await fetch(`/progress/${currentTaskId}`);
@@ -852,14 +1127,15 @@
 
                 if (data.status === 'done') {
                     progressFill.style.width = '100%';
-                    progressText.textContent = 'Готово!';
+                    const totalTime = fmtElapsed(data.started_at);
+                    progressText.textContent = totalTime ? `Готово! (${totalTime})` : 'Готово!';
                     downloadBtn.style.display = 'block';
                     downloadBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     translateBtn.disabled = false;
                     if (data.saved_to) {
-                        showSuccess('Перевод сохранён: ' + data.saved_to);
+                        showSuccess('Перевод сохранён: ' + data.saved_to + (totalTime ? ` (${totalTime})` : ''));
                     } else {
-                        showSuccess('Перевод завершён!');
+                        showSuccess('Перевод завершён!' + (totalTime ? ` (${totalTime})` : ''));
                     }
                 } else if (data.status === 'error') {
                     showError(data.error || 'Ошибка');
@@ -867,11 +1143,19 @@
                     const pct = data.total > 0 ? (data.current / data.total * 100) : 0;
                     progressFill.style.width = pct + '%';
                     const phase = data.phase || 'translating';
-                    if (phase === 'reviewing') {
-                        progressText.textContent = `Проверка: ${data.current} / ${data.total} субтитров (проход 2/2)`;
+                    const elapsed = fmtElapsed(data.started_at);
+                    const elapsedStr = elapsed ? ` [${elapsed}]` : '';
+                    if (phase === 'analyzing') {
+                        progressText.textContent = 'Анализ контента...' + elapsedStr;
+                    } else if (phase === 'glossary') {
+                        progressText.textContent = 'Генерация глоссария...' + elapsedStr;
+                    } else if (phase === 'quality_check') {
+                        progressText.textContent = 'Проверка качества перевода...' + elapsedStr;
+                    } else if (phase === 'reviewing') {
+                        progressText.textContent = `Проверка: ${data.current} / ${data.total} (проход 2/2)` + elapsedStr;
                     } else {
-                        progressText.textContent = `Перевод: ${data.current} / ${data.total} субтитров` +
-                            (data.two_pass_enabled ? ' (проход 1/2)' : '');
+                        progressText.textContent = `Перевод: ${data.current} / ${data.total}` +
+                            (data.two_pass_enabled ? ' (проход 1/2)' : '') + elapsedStr;
                     }
                     setTimeout(pollProgress, 500);
                 }
@@ -881,14 +1165,14 @@
         downloadBtn.addEventListener('click', () => { if (currentTaskId) window.location.href = `/download/${currentTaskId}`; });
 
         function showError(msg) {
-            status.textContent = '❌ ' + msg;
+            status.textContent = msg;
             status.className = 'status error';
             status.style.display = 'block';
             translateBtn.disabled = false;
             progressContainer.style.display = 'none';
         }
         function showSuccess(msg) {
-            status.textContent = '✅ ' + msg;
+            status.textContent = msg;
             status.className = 'status success';
             status.style.display = 'block';
         }
