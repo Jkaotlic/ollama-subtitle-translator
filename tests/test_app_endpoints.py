@@ -468,6 +468,53 @@ class TestTranslateWorker:
                 tasks.pop(task_id, None)
 
 
+class TestPullModelErrorReporting:
+    def test_pull_emits_error_event_when_ollama_returns_error(self, client, monkeypatch):
+        """Bug A regression: Ollama error response must NOT be swallowed as 'done'."""
+
+        class _FakeResp:
+            def __init__(self):
+                self._lines = [
+                    b'{"error": "pull model manifest: file does not exist"}',
+                ]
+            def iter_lines(self):
+                for ln in self._lines:
+                    yield ln
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        monkeypatch.setattr(app_module.requests, "post",
+                            lambda *a, **k: _FakeResp())
+
+        resp = client.post("/pull_model", json={"model": "nonexistent:bogus"})
+        body = resp.get_data(as_text=True)
+        # SSE payload should contain an error event, not a done event.
+        assert '"status": "error"' in body
+        assert "does not exist" in body
+        assert '"status": "done"' not in body
+
+    def test_pull_emits_done_on_successful_stream(self, client, monkeypatch):
+        """Happy-path regression: normal stream still ends with done."""
+        class _FakeResp:
+            def __init__(self):
+                self._lines = [
+                    b'{"status": "pulling manifest"}',
+                    b'{"status": "pulling abc123", "total": 1000, "completed": 500}',
+                    b'{"status": "success"}',
+                ]
+            def iter_lines(self):
+                for ln in self._lines:
+                    yield ln
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        monkeypatch.setattr(app_module.requests, "post",
+                            lambda *a, **k: _FakeResp())
+        resp = client.post("/pull_model", json={"model": "legit-model"})
+        body = resp.get_data(as_text=True)
+        assert '"status": "done"' in body
+
+
 class TestParseFlag:
     def test_parse_flag_none_returns_default(self):
         from app import _parse_flag

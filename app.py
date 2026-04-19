@@ -570,6 +570,15 @@ def pull_model():
                         continue
                     import json as _json
                     data = _json.loads(line)
+                    # Ollama returns {"error": "..."} on failure (e.g. model not in registry).
+                    # Previously we ignored this and still yielded "done" — lying to the UI.
+                    if "error" in data:
+                        err = data["error"]
+                        elapsed = time.time() - t0
+                        logger.warning("pull=%s status=error elapsed=%.1fs error=%s",
+                                       model_name, elapsed, err)
+                        yield f"data: {_json.dumps({'status': 'error', 'error': err})}\n\n"
+                        return
                     status = data.get("status", "")
                     total = data.get("total", 0)
                     completed = data.get("completed", 0)

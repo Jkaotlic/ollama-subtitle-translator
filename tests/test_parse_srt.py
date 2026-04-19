@@ -37,8 +37,24 @@ class _MockResp:
 
 
 def _mock_get_tags(url, timeout=5):
-    """Return a successful /api/tags response with translategemma model."""
-    return _MockResp(200, {"models": [{"name": "translategemma:4b"}, {"name": "gemma3:12b"}]})
+    """Return a successful /api/tags response with a generous list of models.
+
+    Includes both legacy tags (for older tests) and modern 2026-04 defaults
+    (gemma4:e12b, qwen3.5:8b) so tests using `Translator()` defaults pass.
+    """
+    return _MockResp(200, {"models": [
+        {"name": "translategemma:4b"},
+        {"name": "translategemma:12b"},
+        {"name": "gemma3:12b"},
+        {"name": "gemma4:e12b"},
+        {"name": "gemma4:e4b"},
+        {"name": "gemma4:e27b"},
+        {"name": "qwen3.5:4b"},
+        {"name": "qwen3.5:8b"},
+        {"name": "qwen3.5:32b"},
+        {"name": "hunyuan-mt:7b"},
+        {"name": "llama4:scout"},
+    ]})
 
 
 class _MockSession:
@@ -461,8 +477,8 @@ class TestTranslateBatch:
 # ---------------------------------------------------------------------------
 
 class TestTranslatorInit:
-    def test_missing_model_exits_in_tty(self, monkeypatch):
-        """In CLI mode (isatty=True), missing model should cause SystemExit."""
+    def test_missing_model_raises_runtime_error(self, monkeypatch):
+        """Missing model always raises RuntimeError (no longer isatty-gated)."""
         def mock_get(url, **kwargs):
             return _MockResp(200, {"models": [{"name": "other-model"}]})
 
@@ -471,12 +487,11 @@ class TestTranslatorInit:
             def post(self, url, **kw): return ts.requests.post(url, **kw)
 
         monkeypatch.setattr(ts.requests, "Session", lambda: _Sess())
-        monkeypatch.setattr(ts.sys.stdin, "isatty", lambda: True)
-        with pytest.raises(SystemExit):
+        with pytest.raises(RuntimeError, match="translategemma:4b"):
             ts.Translator(model="translategemma:4b", target_lang="Russian", ollama_url="http://fake")
 
-    def test_missing_model_no_exit_in_non_tty(self, monkeypatch):
-        """In non-TTY mode (web worker), missing model should NOT exit."""
+    def test_missing_model_raises_regardless_of_tty(self, monkeypatch):
+        """Even with isatty=False (web worker), missing model raises RuntimeError (not silent)."""
         def mock_get(url, **kwargs):
             return _MockResp(200, {"models": [{"name": "other-model"}]})
 
@@ -485,9 +500,9 @@ class TestTranslatorInit:
             def post(self, url, **kw): return ts.requests.post(url, **kw)
 
         monkeypatch.setattr(ts.requests, "Session", lambda: _Sess())
-        monkeypatch.setattr(ts.sys.stdin, "isatty", lambda: False)
-        translator = ts.Translator(model="translategemma:4b", target_lang="Russian", ollama_url="http://fake")
-        assert translator.model == "translategemma:4b"
+        # Previously this would silently succeed (non-TTY gate). Now it must raise.
+        with pytest.raises(RuntimeError, match="translategemma:4b"):
+            ts.Translator(model="translategemma:4b", target_lang="Russian", ollama_url="http://fake")
 
     def test_connection_error_raises(self, monkeypatch):
         import requests as real_requests
@@ -1308,3 +1323,32 @@ class TestTranslationMemoryClear:
         cleared = tm.clear()
         assert cleared == 0
         tm.close()
+
+
+# ---------------------------------------------------------------------------
+# Bug B regression — Translator.__init__ model validation
+# ---------------------------------------------------------------------------
+
+class TestTranslatorInitModelValidation:
+    def test_raises_runtime_error_on_missing_model(self, monkeypatch):
+        """Bug B regression: missing model → RuntimeError, not sys.exit."""
+        _patch_session(monkeypatch)
+        with pytest.raises(RuntimeError) as exc_info:
+            ts.Translator(model="totally-nonexistent:xyz")
+        # Message should mention the model name and 'ollama pull'
+        assert "totally-nonexistent:xyz" in str(exc_info.value)
+        assert "ollama pull" in str(exc_info.value).lower()
+
+    def test_missing_review_model_raises(self, monkeypatch):
+        _patch_session(monkeypatch)
+        with pytest.raises(RuntimeError) as exc_info:
+            ts.Translator(model="gemma4:e12b", two_pass=True,
+                          review_model="nonexistent-review:1b")
+        assert "nonexistent-review:1b" in str(exc_info.value)
+
+    def test_missing_aux_model_falls_back_not_raises(self, monkeypatch):
+        """aux_model missing is a soft fallback, not a hard error."""
+        _patch_session(monkeypatch)
+        t = ts.Translator(model="gemma4:e12b", aux_model="nonexistent-aux:1b")
+        # Fallback: aux_model should be downgraded to main model
+        assert t.aux_model == "gemma4:e12b"
