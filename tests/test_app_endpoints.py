@@ -181,3 +181,65 @@ class TestTranslateEndpoint:
         assert task["use_llm_judge"] is True
         assert task["use_back_translation"] is False
         assert task["aux_model"] == ""
+
+
+class TestExtractAndTranslate:
+    def test_new_flags_forwarded(self, client, monkeypatch, tmp_path):
+        monkeypatch.setattr(app_module.executor, "submit", lambda *a, **k: MagicMock())
+
+        # Create a fake video file in tmp_path so resolve_video_path accepts it
+        fake_video = tmp_path / "movie.mkv"
+        fake_video.write_bytes(b"fake")
+
+        import video_utils
+        monkeypatch.setattr(video_utils, "resolve_video_path", lambda p: str(fake_video))
+        monkeypatch.setattr(video_utils, "extract_subtitle_track",
+                            lambda resolved, idx, dest: Path(dest).write_text(
+                                "1\n00:00:01,000 --> 00:00:02,000\nHi\n\n",
+                                encoding="utf-8",
+                            ))
+
+        resp = client.post("/extract_and_translate", json={
+            "path": str(fake_video),
+            "sub_index": 0,
+            "lang": "Russian",
+            "model": "gemma4:e12b",
+            "use_tm": False,
+            "use_llm_judge": False,
+            "use_back_translation": True,
+            "aux_model": "llama3:8b",
+        })
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        task_id = resp.get_json()["task_id"]
+        with app_module.tasks_lock:
+            task = app_module.tasks[task_id]
+        assert task["use_tm"] is False
+        assert task["use_llm_judge"] is False
+        assert task["use_back_translation"] is True
+        assert task["aux_model"] == "llama3:8b"
+
+    def test_default_flags(self, client, monkeypatch, tmp_path):
+        monkeypatch.setattr(app_module.executor, "submit", lambda *a, **k: MagicMock())
+        fake_video = tmp_path / "movie.mkv"
+        fake_video.write_bytes(b"fake")
+        import video_utils
+        monkeypatch.setattr(video_utils, "resolve_video_path", lambda p: str(fake_video))
+        monkeypatch.setattr(video_utils, "extract_subtitle_track",
+                            lambda resolved, idx, dest: Path(dest).write_text(
+                                "1\n00:00:01,000 --> 00:00:02,000\nHi\n\n",
+                                encoding="utf-8",
+                            ))
+        resp = client.post("/extract_and_translate", json={
+            "path": str(fake_video),
+            "sub_index": 0,
+            "lang": "Russian",
+            "model": "gemma4:e12b",
+        })
+        assert resp.status_code == 200
+        task_id = resp.get_json()["task_id"]
+        with app_module.tasks_lock:
+            task = app_module.tasks[task_id]
+        assert task["use_tm"] is True
+        assert task["use_llm_judge"] is True
+        assert task["use_back_translation"] is False
+        assert task["aux_model"] == ""

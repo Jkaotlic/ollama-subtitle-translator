@@ -681,6 +681,10 @@ def extract_and_translate():
     context_analysis = data.get("context_analysis", False)
     qe = data.get("qe", False)
     auto_glossary = data.get("auto_glossary", False)
+    use_tm = bool(data.get("use_tm", True))
+    use_llm_judge = bool(data.get("use_llm_judge", True))
+    use_back_translation = bool(data.get("use_back_translation", False))
+    aux_model = str(data.get("aux_model", "") or "").strip()
 
     from translate_srt import parse_glossary
     glossary = parse_glossary(glossary_raw) if glossary_raw.strip() else {}
@@ -744,6 +748,13 @@ def extract_and_translate():
 
     save_dir = str(safe_save_dir) if safe_save_dir is not None else ""
 
+    save_dir_warning: Optional[str] = None
+    if save_dir_raw and save_dir == "":
+        save_dir_warning = (
+            "save_dir отклонён: путь не в разрешённых директориях. "
+            "Перевод будет скачиваем только через кнопку."
+        )
+
     max_cps = data.get("max_cps")
 
     with tasks_lock:
@@ -759,6 +770,10 @@ def extract_and_translate():
             "context_window": int(context_window) if context_window is not None and context_window != "" else 3,
             "max_cps": float(max_cps) if max_cps is not None and max_cps != "" else 0,
             "two_pass_enabled": two_pass,
+            "use_tm": use_tm,
+            "use_llm_judge": use_llm_judge,
+            "use_back_translation": use_back_translation,
+            "aux_model": aux_model,
         }
 
     logger.info("task=%s action=extract_and_translate sub_index=%s lang=%s model=%s",
@@ -769,11 +784,16 @@ def extract_and_translate():
         target_lang, model, context, source_lang, two_pass, review_model,
         glossary=glossary, genre=genre,
         context_analysis=context_analysis, qe=qe, auto_glossary=auto_glossary,
+        use_tm=use_tm, use_llm_judge=use_llm_judge,
+        use_back_translation=use_back_translation, aux_model=aux_model,
     )
     with tasks_lock:
         tasks[task_id]["future"] = future
 
-    return jsonify({"task_id": task_id})
+    response = {"task_id": task_id}
+    if save_dir_warning:
+        response["warning"] = save_dir_warning
+    return jsonify(response)
 
 
 @app.route("/stream_progress/<task_id>")
