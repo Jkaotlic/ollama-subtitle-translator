@@ -875,6 +875,9 @@
         }
 
         function pullModel(modelName) {
+            const MIN_PULL_VISIBLE_MS = 1500;
+            const FAST_CACHED_MS = 300;
+
             return new Promise((resolve, reject) => {
                 const pullContainer = document.getElementById('pullContainer');
                 const pullFill = document.getElementById('pullFill');
@@ -885,6 +888,18 @@
                 pullTitle.textContent = `Скачивание модели ${modelName}...`;
                 pullFill.style.width = '0%';
                 pullStatus.textContent = 'Подключение...';
+
+                const startTs = Date.now();
+                let sawRealProgress = false;  // true if we got at least one non-trivial pulling event
+
+                function hideAfterMin(cb) {
+                    const elapsed = Date.now() - startTs;
+                    const wait = Math.max(0, MIN_PULL_VISIBLE_MS - elapsed);
+                    setTimeout(() => {
+                        pullContainer.style.display = 'none';
+                        if (cb) cb();
+                    }, wait);
+                }
 
                 fetch('/pull_model', {
                     method: 'POST',
@@ -897,8 +912,7 @@
                     function read() {
                         reader.read().then(({done, value}) => {
                             if (done) {
-                                pullContainer.style.display = 'none';
-                                resolve();
+                                hideAfterMin(resolve);
                                 return;
                             }
                             buf += decoder.decode(value, {stream: true});
@@ -915,9 +929,17 @@
                                     }
                                     if (d.status === 'done') {
                                         pullFill.style.width = '100%';
-                                        pullStatus.textContent = 'Готово!';
-                                        setTimeout(() => { pullContainer.style.display = 'none'; resolve(); }, 500);
+                                        const elapsed = Date.now() - startTs;
+                                        if (!sawRealProgress && elapsed < FAST_CACHED_MS) {
+                                            pullStatus.textContent = 'Уже в кэше Ollama';
+                                        } else {
+                                            pullStatus.textContent = 'Готово!';
+                                        }
+                                        hideAfterMin(resolve);
                                         return;
+                                    }
+                                    if (d.total && d.completed && d.completed > 0) {
+                                        sawRealProgress = true;
                                     }
                                     pullFill.style.width = d.pct + '%';
                                     const mb = d.completed ? (d.completed / 1024 / 1024).toFixed(0) : 0;
