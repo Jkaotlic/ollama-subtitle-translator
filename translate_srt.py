@@ -607,28 +607,36 @@ class Translator:
             except sqlite3.Error as e:
                 logger.warning("Failed to open Translation Memory at %s: %s", tm_path, e)
 
-        # Quick connectivity check (model availability already verified by web UI)
+        # Quick connectivity check — always validate model availability regardless of TTY.
+        # Raises RuntimeError (caught by except Exception in worker) instead of sys.exit
+        # (which raises SystemExit, a BaseException, and silently kills worker threads).
         try:
             resp = self._session.get(f"{self.base_url}/api/tags", timeout=3)
             if resp.status_code != 200:
                 raise Exception("Ollama не отвечает")
-            # When called from CLI, verify model exists
-            if sys.stdin and sys.stdin.isatty():
-                available = [m["name"] for m in resp.json().get("models", [])]
-                if not any(model in m for m in available):
-                    print(f"⚠️  Модель {model} не найдена. Доступные: {available}")
-                    print(f"   Запустите: ollama pull {model}")
-                    sys.exit(1)
-                if self.two_pass and self.review_model != model:
-                    if not any(self.review_model in m for m in available):
-                        print(f"⚠️  Review-модель {self.review_model} не найдена.")
-                        sys.exit(1)
-                # Check aux model availability
-                if self.aux_model != model and not any(self.aux_model in m for m in available):
-                    print(f"⚠️  Вспомогательная модель {self.aux_model} не найдена.")
-                    print(f"   Запустите: ollama pull {self.aux_model}")
-                    print(f"   (нужна для анализа контекста, глоссария, оценки качества)")
-                    self.aux_model = model  # fallback to main model
+            # Verify model availability — always, regardless of TTY. If missing, raise
+            # RuntimeError so the worker/CLI catches it and surfaces a clean error
+            # instead of dying silently via sys.exit.
+            available = [m["name"] for m in resp.json().get("models", [])]
+            if not any(model in m for m in available):
+                raise RuntimeError(
+                    f"Модель {model} не найдена в Ollama. Доступные: {available}. "
+                    f"Запустите: ollama pull {model}"
+                )
+            if self.two_pass and self.review_model != model:
+                if not any(self.review_model in m for m in available):
+                    raise RuntimeError(
+                        f"Review-модель {self.review_model} не найдена. "
+                        f"Запустите: ollama pull {self.review_model}"
+                    )
+            # Aux-model fallback is a softer path — warn + downgrade, don't fail.
+            if self.aux_model != model and not any(self.aux_model in m for m in available):
+                logger.warning(
+                    "aux_model %s not found — falling back to main model %s "
+                    "(analysis/glossary/QE will use main model)",
+                    self.aux_model, model,
+                )
+                self.aux_model = model
         except requests.exceptions.ConnectionError:
             raise RuntimeError("Ollama не запущен! Запустите: ollama serve")
 
