@@ -114,6 +114,27 @@ def _validate_save_dir(save_dir: str, extra_base: Optional[Path] = None) -> Opti
             return resolved
     return None
 
+def _parse_flag(value, default: bool) -> bool:
+    """Normalize a form-string or JSON-value into a Python bool.
+
+    Handles all common client encodings:
+    - form checkboxes ("on" / "off" / missing)
+    - JSON booleans (true / false)
+    - JSON strings ("true" / "false" / "1" / "0")
+    - None / absent
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("on", "true", "1", "yes"):
+        return True
+    if s in ("off", "false", "0", "no", ""):
+        return False
+    return default
+
+
 # Cleanup/TTL settings (seconds)
 FILE_TTL = int(os.environ.get("FILE_TTL", str(60 * 60 * 24)))  # default 1 day
 TASK_TTL = int(os.environ.get("TASK_TTL", str(60 * 60 * 24)))  # default 1 day
@@ -421,11 +442,10 @@ def translate():
     qe = request.form.get("qe", "") == "on"
     auto_glossary = request.form.get("auto_glossary", "") == "on"
 
-    # New flags (2026-04-19 UI sync)
-    # Defaults match pre-upgrade behavior: TM on, LLM-judge on, back-translation off, aux-model auto.
-    use_tm = request.form.get("use_tm", "on") != "off"
-    use_llm_judge = request.form.get("use_llm_judge", "on") != "off"
-    use_back_translation = request.form.get("use_back_translation", "") == "on"
+    # New 2026-04-19 UI-sync flags (handle both form and JSON via _parse_flag).
+    use_tm = _parse_flag(request.form.get("use_tm"), default=True)
+    use_llm_judge = _parse_flag(request.form.get("use_llm_judge"), default=True)
+    use_back_translation = _parse_flag(request.form.get("use_back_translation"), default=False)
     aux_model = request.form.get("aux_model", "").strip()
 
     from translate_srt import parse_glossary
@@ -537,6 +557,7 @@ def pull_model():
         return jsonify({"error": "Имя модели не указано"}), 400
 
     def generate():
+        t0 = time.time()
         try:
             with requests.post(
                 f"{OLLAMA_URL}/api/pull",
@@ -554,8 +575,12 @@ def pull_model():
                     completed = data.get("completed", 0)
                     pct = int(completed / total * 100) if total else 0
                     yield f"data: {_json.dumps({'status': status, 'pct': pct, 'total': total, 'completed': completed})}\n\n"
+                elapsed = time.time() - t0
+                logger.info("pull=%s status=done elapsed=%.1fs", model_name, elapsed)
                 yield f"data: {_json.dumps({'status': 'done', 'pct': 100})}\n\n"
         except Exception as e:
+            elapsed = time.time() - t0
+            logger.warning("pull=%s status=error elapsed=%.1fs error=%s", model_name, elapsed, e)
             import json as _json
             yield f"data: {_json.dumps({'status': 'error', 'error': str(e)})}\n\n"
 
@@ -592,8 +617,24 @@ def tm_stats():
 
 @app.route("/tm/clear", methods=["POST"])
 def tm_clear():
-    """Clear all entries from Translation Memory."""
+    """Clear all entries from Translation Memory.
+
+    Rejects with 409 if any translation task is currently running with TM enabled —
+    clearing mid-translation could corrupt the worker's view of the store.
+    """
     from translate_srt import TranslationMemory
+    # Busy-guard: reject if any active task is using TM right now.
+    with tasks_lock:
+        active_tm_users = [
+            tid for tid, t in tasks.items()
+            if t.get("status") in ("starting", "running") and t.get("use_tm")
+        ]
+    if active_tm_users:
+        return jsonify({
+            "ok": False,
+            "error": "TM занят активным переводом. Дождитесь завершения и повторите.",
+        }), 409
+
     db_path = _tm_db_path()
     if not db_path.exists():
         return jsonify({"ok": True, "cleared": 0})
@@ -706,10 +747,10 @@ def extract_and_translate():
     context_analysis = data.get("context_analysis", False)
     qe = data.get("qe", False)
     auto_glossary = data.get("auto_glossary", False)
-    use_tm = bool(data.get("use_tm", True))
-    use_llm_judge = bool(data.get("use_llm_judge", True))
-    use_back_translation = bool(data.get("use_back_translation", False))
-    aux_model = str(data.get("aux_model", "") or "").strip()
+    use_tm = _parse_flag(data.get("use_tm"), default=True)
+    use_llm_judge = _parse_flag(data.get("use_llm_judge"), default=True)
+    use_back_translation = _parse_flag(data.get("use_back_translation"), default=False)
+    aux_model = str(data.get("aux_model") or "").strip()
 
     from translate_srt import parse_glossary
     glossary = parse_glossary(glossary_raw) if glossary_raw.strip() else {}
