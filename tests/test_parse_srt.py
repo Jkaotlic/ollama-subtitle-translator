@@ -39,19 +39,23 @@ class _MockResp:
 def _mock_get_tags(url, timeout=5):
     """Return a successful /api/tags response with a generous list of models.
 
-    Includes both legacy tags (for older tests) and modern 2026-04 defaults
-    (gemma4:e12b, qwen3.5:8b) so tests using `Translator()` defaults pass.
+    Includes legacy tags (used by older tests) and the real current Ollama
+    library tags for the 2026-04 upgrade (gemma4:e4b/26b/31b, qwen3.5:9b/27b).
     """
     return _MockResp(200, {"models": [
         {"name": "translategemma:4b"},
         {"name": "translategemma:12b"},
         {"name": "gemma3:12b"},
-        {"name": "gemma4:e12b"},
+        {"name": "gemma4:e2b"},
         {"name": "gemma4:e4b"},
-        {"name": "gemma4:e27b"},
+        {"name": "gemma4:26b"},
+        {"name": "gemma4:31b"},
+        {"name": "qwen3.5:0.8b"},
+        {"name": "qwen3.5:2b"},
         {"name": "qwen3.5:4b"},
-        {"name": "qwen3.5:8b"},
-        {"name": "qwen3.5:32b"},
+        {"name": "qwen3.5:9b"},
+        {"name": "qwen3.5:27b"},
+        {"name": "qwen3.5:35b"},
         {"name": "hunyuan-mt:7b"},
         {"name": "llama4:scout"},
     ]})
@@ -861,7 +865,7 @@ class TestQualityEstimation:
         """LLM-as-judge should parse integer scores from JSON response."""
         _patch_session(monkeypatch)
         tr = ts.Translator(model="gemma3:12b", target_lang="Russian", ollama_url="http://fake",
-                           aux_model="qwen3.5:8b")
+                           aux_model="qwen3.5:9b")
 
         def mock_post(url, json=None, timeout=120, **kwargs):
             if "/api/chat" in url:
@@ -1309,8 +1313,8 @@ class TestTranslationMemoryClear:
     def test_clear_empties_tm(self, tmp_path):
         db = tmp_path / "tm.db"
         tm = ts.TranslationMemory(db)
-        tm.store("hello", "en", "gemma4:e12b", "привет")
-        tm.store("world", "en", "gemma4:e12b", "мир")
+        tm.store("hello", "en", "gemma4:e4b", "привет")
+        tm.store("world", "en", "gemma4:e4b", "мир")
         assert tm.stats()["entries"] == 2
         cleared = tm.clear()
         assert cleared == 2
@@ -1342,13 +1346,13 @@ class TestTranslatorInitModelValidation:
     def test_missing_review_model_raises(self, monkeypatch):
         _patch_session(monkeypatch)
         with pytest.raises(RuntimeError) as exc_info:
-            ts.Translator(model="gemma4:e12b", two_pass=True,
+            ts.Translator(model="gemma4:e4b", two_pass=True,
                           review_model="nonexistent-review:1b")
         assert "nonexistent-review:1b" in str(exc_info.value)
 
     def test_missing_aux_model_falls_back_not_raises(self, monkeypatch):
         """aux_model missing is a soft fallback, not a hard error."""
         _patch_session(monkeypatch)
-        t = ts.Translator(model="gemma4:e12b", aux_model="nonexistent-aux:1b")
+        t = ts.Translator(model="gemma4:e4b", aux_model="nonexistent-aux:1b")
         # Fallback: aux_model should be downgraded to main model
-        assert t.aux_model == "gemma4:e12b"
+        assert t.aux_model == "gemma4:e4b"

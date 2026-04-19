@@ -249,7 +249,7 @@
             <input id="customModelInput" type="text" placeholder="например: llama4:scout или mistral-nemo:12b"
                    style="margin-bottom:0;">
         </div>
-        <input id="model" type="hidden" value="gemma4:e12b">
+        <input id="model" type="hidden" value="gemma4:e4b">
 
         <label for="save_dir">Сохранить в папку (необязательно):</label>
         <input id="save_dir" type="text" placeholder="Путь к папке, напр. D:\Сериалы\The Pitt\S01" style="margin-bottom:4px;">
@@ -331,9 +331,9 @@
             </div>
 
             <label for="aux_model">Вспомогательная модель (анализ / глоссарий / QE):</label>
-            <input id="aux_model" type="text" placeholder="qwen3.5:8b (по умолчанию)" style="margin-bottom:4px;">
+            <input id="aux_model" type="text" placeholder="qwen3.5:9b (по умолчанию)" style="margin-bottom:4px;">
             <div style="font-size:11px; color:#718096; margin-bottom:16px;">
-                Пусто = автоматически (qwen3.5:8b для translation-only моделей, сама модель — для general-purpose).
+                Пусто = автоматически (qwen3.5:9b для translation-only моделей, сама модель — для general-purpose).
             </div>
             </div>
 
@@ -446,17 +446,17 @@
         // Новые модели: Gemma 4 (140 языков, reasoning), Qwen 3.5 (201 язык),
         // Hunyuan-MT (специализация под перевод), Llama 4 Scout (10M контекст).
         const MODEL_PRESETS = [
-            { id: 'gemma4:e12b',   name: 'Gemma 4 12B ⭐',       size: '8 GB',  ram: '~16 GB RAM',   desc: 'Рекомендуется: 140 языков, reasoning, мультимодальная' },
-            { id: 'gemma4:e4b',    name: 'Gemma 4 4B',           size: '3 GB',  ram: '~8 GB RAM',    desc: 'Быстрая для слабого железа, 140 языков' },
-            { id: 'gemma4:e27b',   name: 'Gemma 4 27B',          size: '17 GB', ram: '~24 GB RAM',   desc: 'Максимальное качество Gemma' },
-            { id: 'qwen3.5:8b',    name: 'Qwen 3.5 8B',          size: '5 GB',  ram: '~12 GB RAM',   desc: '201 язык, отличный для CJK и сарказма' },
-            { id: 'qwen3.5:32b',   name: 'Qwen 3.5 32B',         size: '20 GB', ram: '~24 GB RAM',   desc: 'Топ-качество для сложного контента' },
+            { id: 'gemma4:e4b',    name: 'Gemma 4 4B ⭐',        size: '3 GB',  ram: '~8 GB RAM',    desc: 'Рекомендуется: 140 языков, efficient, идёт на слабом железе' },
+            { id: 'gemma4:26b',    name: 'Gemma 4 26B',          size: '17 GB', ram: '~24 GB RAM',   desc: 'Мощная: максимум качества, нужен GPU с большой VRAM' },
+            { id: 'gemma4:31b',    name: 'Gemma 4 31B',          size: '20 GB', ram: '~32 GB RAM',   desc: 'Топовая Gemma, серверное железо' },
+            { id: 'qwen3.5:9b',    name: 'Qwen 3.5 9B',          size: '5 GB',  ram: '~12 GB RAM',   desc: '201 язык, отличный для CJK и сарказма' },
+            { id: 'qwen3.5:27b',   name: 'Qwen 3.5 27B',         size: '17 GB', ram: '~24 GB RAM',   desc: 'Топ-качество для сложного контента' },
             { id: 'hunyuan-mt:7b', name: 'Hunyuan-MT 7B',        size: '4 GB',  ram: '~10 GB RAM',   desc: 'Специализация под перевод (Tencent)' },
             { id: 'llama4:scout',  name: 'Llama 4 Scout',        size: 'большой', ram: 'серверное', desc: '10M контекст — весь фильм одним запросом' },
         ];
         // Вспомогательная модель для анализа/глоссария/QE (используется автоматически)
-        const AUX_MODEL = 'qwen3.5:8b';
-        let selectedModelId = 'gemma4:e12b';
+        const AUX_MODEL = 'qwen3.5:9b';
+        let selectedModelId = 'gemma4:e4b';
         const modelStatuses = {};
 
         function renderModelCards() {
@@ -514,7 +514,7 @@
                 renderModelCards();
                 document.getElementById('customModelInput').focus();
             } else {
-                selectPresetModel('gemma4:e12b');
+                selectPresetModel('gemma4:e4b');
             }
         }
 

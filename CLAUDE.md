@@ -2,7 +2,7 @@
 
 ## Project Overview
 Веб-приложение + CLI для перевода субтитров (.srt) через локальный Ollama.
-Основная модель — TranslateGemma (translation-only), вспомогательная — qwen3.5:4b (анализ, глоссарий, QE).
+Основная модель — **gemma4:e4b** (140 языков, reasoning), вспомогательная — **qwen3.5:9b** (анализ, глоссарий, QE).
 
 ## Architecture
 

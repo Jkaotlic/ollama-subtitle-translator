@@ -28,7 +28,7 @@ class TestTmEndpoints:
     def test_tm_stats_after_store(self, client, tmp_path):
         import translate_srt as ts
         tm = ts.TranslationMemory(tmp_path / "translation_memory.db")
-        tm.store("hi", "en", "gemma4:e12b", "привет")
+        tm.store("hi", "en", "gemma4:e4b", "привет")
         tm.close()
         resp = client.get("/tm/stats")
         data = resp.get_json()
@@ -38,7 +38,7 @@ class TestTmEndpoints:
     def test_tm_clear(self, client, tmp_path):
         import translate_srt as ts
         tm = ts.TranslationMemory(tmp_path / "translation_memory.db")
-        tm.store("hi", "en", "gemma4:e12b", "привет")
+        tm.store("hi", "en", "gemma4:e4b", "привет")
         tm.close()
         resp = client.post("/tm/clear")
         assert resp.status_code == 200
@@ -100,10 +100,10 @@ class TestCheckModel:
         def fake_get(url, timeout=5):
             resp = MagicMock()
             resp.status_code = 200
-            resp.json.return_value = {"models": [{"name": "gemma4:e12b"}]}
+            resp.json.return_value = {"models": [{"name": "gemma4:e4b"}]}
             return resp
         monkeypatch.setattr(app_module.requests, "get", fake_get)
-        resp = client.post("/check_model", json={"model": "gemma4:e12b"})
+        resp = client.post("/check_model", json={"model": "gemma4:e4b"})
         data = resp.get_json()
         assert data["exists"] is True
 
@@ -112,24 +112,24 @@ class TestCheckModel:
         def fake_get(url, timeout=5):
             resp = MagicMock()
             resp.status_code = 200
-            resp.json.return_value = {"models": [{"name": "gemma4:e12b-instruct-q4"}]}
+            resp.json.return_value = {"models": [{"name": "gemma4:e4b-instruct-q4"}]}
             return resp
         monkeypatch.setattr(app_module.requests, "get", fake_get)
-        resp = client.post("/check_model", json={"model": "gemma4:e12b"})
+        resp = client.post("/check_model", json={"model": "gemma4:e4b"})
         data = resp.get_json()
-        assert data["exists"] is False, "gemma4:e12b should NOT match gemma4:e12b-instruct-q4"
+        assert data["exists"] is False, "gemma4:e4b should NOT match gemma4:e4b-instruct-q4"
 
     def test_list_all_returns_available(self, client, monkeypatch):
         def fake_get(url, timeout=5):
             resp = MagicMock()
             resp.status_code = 200
-            resp.json.return_value = {"models": [{"name": "gemma4:e12b"}, {"name": "qwen3.5:8b"}]}
+            resp.json.return_value = {"models": [{"name": "gemma4:e4b"}, {"name": "qwen3.5:9b"}]}
             return resp
         monkeypatch.setattr(app_module.requests, "get", fake_get)
         resp = client.post("/check_model", json={"model": "__list_all__"})
         data = resp.get_json()
-        assert "gemma4:e12b" in data["available"]
-        assert "qwen3.5:8b" in data["available"]
+        assert "gemma4:e4b" in data["available"]
+        assert "qwen3.5:9b" in data["available"]
 
 
 class TestTranslateEndpoint:
@@ -142,7 +142,7 @@ class TestTranslateEndpoint:
             data={
                 "file": (io.BytesIO(srt), "test.srt"),
                 "lang": "Russian",
-                "model": "gemma4:e12b",
+                "model": "gemma4:e4b",
                 "use_tm": "off",
                 "use_llm_judge": "off",
                 "use_back_translation": "on",
@@ -167,7 +167,7 @@ class TestTranslateEndpoint:
             data={
                 "file": (io.BytesIO(srt), "test.srt"),
                 "lang": "Russian",
-                "model": "gemma4:e12b",
+                "model": "gemma4:e4b",
                 "save_dir": "C:\\Windows\\System32",  # not in allow-list
             },
             content_type="multipart/form-data",
@@ -188,7 +188,7 @@ class TestTranslateEndpoint:
             data={
                 "file": (io.BytesIO(srt), "test.srt"),
                 "lang": "Russian",
-                "model": "gemma4:e12b",
+                "model": "gemma4:e4b",
                 "save_dir": str(tmp_path),
             },
             content_type="multipart/form-data",
@@ -205,7 +205,7 @@ class TestTranslateEndpoint:
             data={
                 "file": (io.BytesIO(srt), "test.srt"),
                 "lang": "Russian",
-                "model": "gemma4:e12b",
+                "model": "gemma4:e4b",
             },
             content_type="multipart/form-data",
         )
@@ -240,7 +240,7 @@ class TestExtractAndTranslate:
             "path": str(fake_video),
             "sub_index": 0,
             "lang": "Russian",
-            "model": "gemma4:e12b",
+            "model": "gemma4:e4b",
             "use_tm": False,
             "use_llm_judge": False,
             "use_back_translation": True,
@@ -270,7 +270,7 @@ class TestExtractAndTranslate:
             "path": str(fake_video),
             "sub_index": 0,
             "lang": "Russian",
-            "model": "gemma4:e12b",
+            "model": "gemma4:e4b",
         })
         assert resp.status_code == 200
         task_id = resp.get_json()["task_id"]
@@ -297,7 +297,7 @@ class TestExtractAndTranslate:
             "path": str(fake_video),
             "sub_index": 0,
             "lang": "Russian",
-            "model": "gemma4:e12b",
+            "model": "gemma4:e4b",
             "use_tm": "false",          # string, not bool
             "use_back_translation": "false",
         })
@@ -352,7 +352,7 @@ class TestTranslateWorker:
         try:
             translate_worker(
                 task_id, srt_path, out_path,
-                "Russian", "gemma4:e12b",
+                "Russian", "gemma4:e4b",
                 use_tm=False, use_llm_judge=False,
                 use_back_translation=True, aux_model="llama3:8b",
                 context_analysis=False, qe=True, auto_glossary=False,
@@ -410,7 +410,7 @@ class TestTranslateWorker:
 
         try:
             translate_worker(
-                task_id, srt_path, out_path, "Russian", "gemma4:e12b",
+                task_id, srt_path, out_path, "Russian", "gemma4:e4b",
                 use_tm=True, context_analysis=False, qe=False, auto_glossary=False,
             )
             with tasks_lock:
@@ -455,7 +455,7 @@ class TestTranslateWorker:
 
         try:
             translate_worker(
-                task_id, srt_path, out_path, "Russian", "gemma4:e12b",
+                task_id, srt_path, out_path, "Russian", "gemma4:e4b",
                 use_tm=False, context_analysis=False, qe=False, auto_glossary=False,
             )
             with tasks_lock:
