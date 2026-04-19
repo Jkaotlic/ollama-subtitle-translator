@@ -57,8 +57,8 @@ class TestTranslationMemoryClear:
     def test_clear_empties_tm(self, tmp_path):
         db = tmp_path / "tm.db"
         tm = ts.TranslationMemory(db)
-        tm.store("hello", "привет", "en", "ru", "gemma4:e12b")
-        tm.store("world", "мир", "en", "ru", "gemma4:e12b")
+        tm.store("hello", "en", "gemma4:e12b", "привет")
+        tm.store("world", "en", "gemma4:e12b", "мир")
         assert tm.stats()["entries"] == 2
         cleared = tm.clear()
         assert cleared == 2
@@ -170,7 +170,7 @@ class TestTmEndpoints:
     def test_tm_stats_after_store(self, client, tmp_path):
         import translate_srt as ts
         tm = ts.TranslationMemory(tmp_path / "translation_memory.db")
-        tm.store("hi", "привет", "en", "ru", "gemma4:e12b")
+        tm.store("hi", "en", "gemma4:e12b", "привет")
         tm.close()
         resp = client.get("/tm/stats")
         data = resp.get_json()
@@ -180,7 +180,7 @@ class TestTmEndpoints:
     def test_tm_clear(self, client, tmp_path):
         import translate_srt as ts
         tm = ts.TranslationMemory(tmp_path / "translation_memory.db")
-        tm.store("hi", "привет", "en", "ru", "gemma4:e12b")
+        tm.store("hi", "en", "gemma4:e12b", "привет")
         tm.close()
         resp = client.post("/tm/clear")
         assert resp.status_code == 200
