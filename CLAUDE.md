@@ -64,6 +64,19 @@ templates/index.html — SPA web UI (dark theme, SSE progress, model management)
 - `_translate_chunk()`: retry failed chunks (3 batch retries + per-segment fallback)
 - Parallel chunk processing via ThreadPoolExecutor (`parallel_chunks=2` default)
 
+## Fixed Issues (session 5 — 2026-04-19, UI sync)
+
+- UI чекбоксы для новых фич: TM toggle (+ статус/clear), LLM-judge sub-toggle под QE, back-translation, aux-модель override
+- `.advanced-panel` разбита на 3 подраздела (Контент / Параметры модели / Качество и память)
+- `/tm/stats` и `/tm/clear` endpoints + `TranslationMemory.clear()`
+- `/check_model` **exact-match** вместо substring — фиксит ложное «уже скачано» и невидимый pull-прогресс
+- pull-панель держится ≥1.5 сек; отличает быстрый cached success (`Уже в кэше Ollama`) от реального скачивания
+- `save_dir` rejected → жёлтый warning в UI (`.status.warn`) вместо тихого игнора
+- Блок `#resultInfo`: duration, auto_glossary, context analysis, qe_weak_count, tm_hits_delta
+- `translate_worker`: пробрасывает `use_tm`, `use_llm_judge`, `use_back_translation`, `aux_model`; пишет `tm_hits_delta` и `duration_seconds`
+- Footer обновлён: Gemma 4 / Qwen 3.5 / Hunyuan-MT, 140+ языков
+- Tests: **148 total** (126 → 148, +22 новых: TM.clear×2, app endpoints×16, index template×4)
+
 ## Remaining Issues & Bottlenecks
 
 - ~~`validate_translation` doesn't check target language~~ — FIXED: now accepts optional `target_lang` param
