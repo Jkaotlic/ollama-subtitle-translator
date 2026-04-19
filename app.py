@@ -466,7 +466,12 @@ def check_model():
         if resp.status_code != 200:
             return jsonify({"exists": False, "error": "Ollama не отвечает"}), 502
         available = [m["name"] for m in resp.json().get("models", [])]
-        exists = any(model_name in m for m in available)
+        # Exact-match check — substring matches caused false-positives
+        # (e.g. "gemma4:e12b" matching "gemma4:e12b-instruct-q4")
+        if model_name == "__list_all__":
+            exists = False
+        else:
+            exists = model_name in available
         return jsonify({"exists": exists, "available": available})
     except requests.exceptions.ConnectionError:
         return jsonify({"exists": False, "error": "Ollama не запущен"}), 502

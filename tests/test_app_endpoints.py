@@ -54,3 +54,41 @@ class TestTmEndpoints:
         data = resp.get_json()
         assert data["ok"] is True
         assert data["cleared"] == 0
+
+
+class TestCheckModel:
+    def test_exact_match_positive(self, client, monkeypatch):
+        # Ollama returns exact tag we requested
+        def fake_get(url, timeout=5):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {"models": [{"name": "gemma4:e12b"}]}
+            return resp
+        monkeypatch.setattr(app_module.requests, "get", fake_get)
+        resp = client.post("/check_model", json={"model": "gemma4:e12b"})
+        data = resp.get_json()
+        assert data["exists"] is True
+
+    def test_exact_match_rejects_prefix(self, client, monkeypatch):
+        # Only a suffixed variant is installed — not the tag user asked for
+        def fake_get(url, timeout=5):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {"models": [{"name": "gemma4:e12b-instruct-q4"}]}
+            return resp
+        monkeypatch.setattr(app_module.requests, "get", fake_get)
+        resp = client.post("/check_model", json={"model": "gemma4:e12b"})
+        data = resp.get_json()
+        assert data["exists"] is False, "gemma4:e12b should NOT match gemma4:e12b-instruct-q4"
+
+    def test_list_all_returns_available(self, client, monkeypatch):
+        def fake_get(url, timeout=5):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {"models": [{"name": "gemma4:e12b"}, {"name": "qwen3.5:8b"}]}
+            return resp
+        monkeypatch.setattr(app_module.requests, "get", fake_get)
+        resp = client.post("/check_model", json={"model": "__list_all__"})
+        data = resp.get_json()
+        assert "gemma4:e12b" in data["available"]
+        assert "qwen3.5:8b" in data["available"]
