@@ -505,6 +505,49 @@ def pull_model():
     return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
 
+def _tm_db_path() -> Path:
+    """Path to the default Translation Memory database used by the web worker."""
+    return UPLOAD_DIR / "translation_memory.db"
+
+
+@app.route("/tm/stats", methods=["GET"])
+def tm_stats():
+    """Return Translation Memory stats: number of entries and file size on disk."""
+    from translate_srt import TranslationMemory
+    db_path = _tm_db_path()
+    if not db_path.exists():
+        return jsonify({"entries": 0, "size_bytes": 0})
+    try:
+        tm = TranslationMemory(db_path)
+        stats = tm.stats()
+        tm.close()
+        size_bytes = db_path.stat().st_size
+        return jsonify({
+            "entries": stats["entries"],
+            "size_bytes": size_bytes,
+        })
+    except Exception as e:
+        logger.warning("tm_stats failed: %s", e)
+        return jsonify({"entries": 0, "size_bytes": 0, "error": "tm_unavailable"}), 200
+
+
+@app.route("/tm/clear", methods=["POST"])
+def tm_clear():
+    """Clear all entries from Translation Memory."""
+    from translate_srt import TranslationMemory
+    db_path = _tm_db_path()
+    if not db_path.exists():
+        return jsonify({"ok": True, "cleared": 0})
+    try:
+        tm = TranslationMemory(db_path)
+        cleared = tm.clear()
+        tm.close()
+        return jsonify({"ok": True, "cleared": cleared})
+    except Exception as e:
+        logger.exception("tm_clear failed")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/check_ffmpeg", methods=["POST"])
 def check_ffmpeg():
     """Check if ffmpeg/ffprobe are installed."""
