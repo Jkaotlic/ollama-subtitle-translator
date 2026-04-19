@@ -89,6 +89,7 @@
         .status { margin-top: 12px; padding: 12px; border-radius: 8px; font-size: 14px; }
         .status.error { background: rgba(245, 101, 101, 0.15); color: #fc8181; display: none; }
         .status.success { background: rgba(72, 187, 120, 0.15); color: #68d391; display: none; }
+        .status.warn { background: rgba(237, 137, 54, 0.15); color: #fbd38d; display: none; }
         .info { text-align: center; color: #718096; font-size: 13px; margin-top: 20px; }
         .pull-container {
             display: none;
@@ -404,7 +405,7 @@
     </div>
 
     <div class="info">
-        TranslateGemma (Google) — специализированные модели для перевода, 55 языков
+        Gemma 4 / Qwen 3.5 / Hunyuan-MT — локальный перевод через Ollama, 140+ языков
     </div>
 
     <script>
@@ -1084,6 +1085,7 @@
                     const data = await resp.json();
                     if (data.error) { showError(data.error); return; }
                     currentTaskId = data.task_id;
+                    if (data.warning) showWarn(data.warning);
                     pollProgress();
                 } catch (e) { showError('Ошибка подключения'); }
             } else if (selectedFiles.length === 1) {
@@ -1096,6 +1098,7 @@
                     const data = await resp.json();
                     if (data.error) { showError(data.error); return; }
                     currentTaskId = data.task_id;
+                    if (data.warning) showWarn(data.warning);
                     pollProgress();
                 } catch (e) { showError('Ошибка подключения'); }
             } else {
@@ -1136,6 +1139,7 @@
                     } else {
                         batchTaskIds.push(data.task_id);
                         document.getElementById(`${itemId}-status`).textContent = 'Запущен...';
+                        if (data.warning) showWarn(data.warning);
                     }
                 } catch (e) {
                     document.getElementById(`${itemId}-status`).textContent = 'Ошибка подключения';
@@ -1275,6 +1279,11 @@
         function showSuccess(msg) {
             status.textContent = msg;
             status.className = 'status success';
+            status.style.display = 'block';
+        }
+        function showWarn(msg) {
+            status.textContent = msg;
+            status.className = 'status warn';
             status.style.display = 'block';
         }
 
