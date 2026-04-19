@@ -397,6 +397,14 @@
             <div class="progress-text" id="progressText">Подготовка...</div>
         </div>
 
+        <div id="resultInfo" style="display:none; margin-top:16px; padding:14px; background: rgba(72,187,120,0.08); border:1px solid #48bb78; border-radius:8px;">
+            <div id="resultDuration" style="font-size:13px; color:#a0aec0; margin-bottom:8px;"></div>
+            <div id="resultGlossary" style="font-size:13px; color:#e2e8f0; margin-bottom:6px; display:none;"></div>
+            <div id="resultAnalysis" style="font-size:13px; color:#a0aec0; margin-bottom:6px; display:none; font-style:italic;"></div>
+            <div id="resultQe" style="font-size:13px; color:#a0aec0; margin-bottom:6px; display:none;"></div>
+            <div id="resultTm" style="font-size:13px; color:#a0aec0; display:none;"></div>
+        </div>
+
         <div id="batchProgressContainer" style="display:none; margin-top:16px;"></div>
 
         <button class="download-btn" id="downloadBtn">Скачать перевод</button>
@@ -1090,6 +1098,8 @@
             downloadBtn.style.display = 'none';
             document.getElementById('batchDownloadContainer').style.display = 'none';
             status.style.display = 'none';
+            const ri = document.getElementById('resultInfo');
+            if (ri) ri.style.display = 'none';
 
             try { await ensureModels(); } catch (e) { showError('Не удалось скачать модель: ' + e); return; }
 
@@ -1259,6 +1269,7 @@
                     downloadBtn.style.display = 'block';
                     downloadBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     translateBtn.disabled = false;
+                    renderResultInfo(data);
                     if (data.saved_to) {
                         showSuccess('Перевод сохранён: ' + data.saved_to + (totalTime ? ` (${totalTime})` : ''));
                     } else {
@@ -1287,6 +1298,63 @@
                     setTimeout(pollProgress, 500);
                 }
             } catch (e) { showError('Потеря соединения'); }
+        }
+
+        function renderResultInfo(data) {
+            const box = document.getElementById('resultInfo');
+            if (!box) return;
+
+            const dur = data.duration_seconds || 0;
+            const m = Math.floor(dur / 60);
+            const s = Math.round(dur % 60);
+            document.getElementById('resultDuration').textContent =
+                `⏱ Готово за ${m > 0 ? m + 'm ' + s + 's' : s + 's'}`;
+
+            const ag = data.auto_glossary;
+            const agBox = document.getElementById('resultGlossary');
+            if (ag && Object.keys(ag).length) {
+                const n = Object.keys(ag).length;
+                const items = Object.entries(ag)
+                    .slice(0, 50)
+                    .map(([k, v]) => `${k} → ${v}`)
+                    .join(', ');
+                agBox.innerHTML = `🔖 Авто-глоссарий: ${n} терминов <span style="color:#718096; font-size:12px;">(${items}${n > 50 ? '...' : ''})</span>`;
+                agBox.style.display = 'block';
+            } else {
+                agBox.style.display = 'none';
+            }
+
+            const ana = data.context_analysis_result;
+            const anaBox = document.getElementById('resultAnalysis');
+            if (ana) {
+                anaBox.textContent = `🎬 ${ana}`;
+                anaBox.style.display = 'block';
+            } else {
+                anaBox.style.display = 'none';
+            }
+
+            const qw = data.qe_weak_count;
+            const qeBox = document.getElementById('resultQe');
+            if (typeof qw === 'number') {
+                qeBox.textContent = qw > 0
+                    ? `✅ QE: ${qw} слабых сегментов переведены заново`
+                    : `✅ QE: все сегменты прошли проверку`;
+                qeBox.style.display = 'block';
+            } else {
+                qeBox.style.display = 'none';
+            }
+
+            const td = data.tm_hits_delta;
+            const tmBox = document.getElementById('resultTm');
+            if (typeof td === 'number') {
+                tmBox.textContent = `💾 Translation Memory: +${td} новых записей`;
+                tmBox.style.display = 'block';
+                if (typeof refreshTMStatus === 'function') refreshTMStatus();
+            } else {
+                tmBox.style.display = 'none';
+            }
+
+            box.style.display = 'block';
         }
 
         downloadBtn.addEventListener('click', () => { if (currentTaskId) window.location.href = `/download/${currentTaskId}`; });
