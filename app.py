@@ -225,7 +225,7 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         chunk_size = task_snapshot.get("chunk_size", 1000)
         context_window = task_snapshot.get("context_window", 3)
 
-        tm_path = UPLOAD_DIR / "translation_memory.db"
+        tm_path = _tm_db_path()
         translator = Translator(
             model=model, target_lang=target_lang, ollama_url=OLLAMA_URL,
             context=context, temperature=temp, source_lang=source_lang,
@@ -519,9 +519,11 @@ def tm_stats():
         return jsonify({"entries": 0, "size_bytes": 0})
     try:
         tm = TranslationMemory(db_path)
-        stats = tm.stats()
-        tm.close()
-        size_bytes = db_path.stat().st_size
+        try:
+            stats = tm.stats()
+            size_bytes = db_path.stat().st_size
+        finally:
+            tm.close()
         return jsonify({
             "entries": stats["entries"],
             "size_bytes": size_bytes,
@@ -540,8 +542,10 @@ def tm_clear():
         return jsonify({"ok": True, "cleared": 0})
     try:
         tm = TranslationMemory(db_path)
-        cleared = tm.clear()
-        tm.close()
+        try:
+            cleared = tm.clear()
+        finally:
+            tm.close()
         return jsonify({"ok": True, "cleared": cleared})
     except Exception as e:
         logger.exception("tm_clear failed")
