@@ -283,6 +283,23 @@ class TranslationMemory:
             logger.info("TM prune: removed %d entries (kept %d)", to_delete, max_entries)
             return to_delete
 
+    def clear(self) -> int:
+        """Remove all entries from TM. Returns deleted count.
+
+        Safe to call between translations, not during.
+        """
+        with self._lock:
+            count = self._conn.execute("SELECT COUNT(*) FROM tm").fetchone()[0]
+            self._conn.execute("DELETE FROM tm")
+            self._conn.commit()
+            # VACUUM cannot run inside a transaction; commit first then vacuum.
+            try:
+                self._conn.execute("VACUUM")
+            except sqlite3.Error as e:
+                logger.debug("VACUUM skipped: %s", e)
+            logger.info("TM cleared: %d entries removed", count)
+            return count
+
     def close(self) -> None:
         try:
             self._conn.close()

@@ -1284,3 +1284,27 @@ class TestAlignmentValidation:
         assert len(results) == 4
         # Should have fallen back to per-segment (call_count > 1)
         assert call_count[0] > 1
+
+
+# ---------------------------------------------------------------------------
+# TranslationMemory.clear()
+# ---------------------------------------------------------------------------
+
+class TestTranslationMemoryClear:
+    def test_clear_empties_tm(self, tmp_path):
+        db = tmp_path / "tm.db"
+        tm = ts.TranslationMemory(db)
+        tm.store("hello", "en", "gemma4:e12b", "привет")
+        tm.store("world", "en", "gemma4:e12b", "мир")
+        assert tm.stats()["entries"] == 2
+        cleared = tm.clear()
+        assert cleared == 2
+        assert tm.stats()["entries"] == 0
+        tm.close()
+
+    def test_clear_on_empty_tm(self, tmp_path):
+        db = tmp_path / "tm.db"
+        tm = ts.TranslationMemory(db)
+        cleared = tm.clear()
+        assert cleared == 0
+        tm.close()
