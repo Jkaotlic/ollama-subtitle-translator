@@ -952,6 +952,54 @@
             }
         }
 
+        // --- Translation Memory UI ---
+        async function refreshTMStatus() {
+            const el = document.getElementById('tmStatus');
+            if (!el) return;
+            try {
+                const resp = await fetch('/tm/stats');
+                const data = await resp.json();
+                const mb = (data.size_bytes / 1024 / 1024).toFixed(1);
+                el.textContent = `${data.entries} записей · ${mb} MB`;
+            } catch (e) {
+                el.textContent = 'недоступна';
+            }
+        }
+
+        async function clearTM() {
+            const el = document.getElementById('tmStatus');
+            if (!confirm('Очистить Translation Memory? Это удалит все накопленные переводы.')) return;
+            try {
+                const resp = await fetch('/tm/clear', {method: 'POST'});
+                const data = await resp.json();
+                if (data.ok) {
+                    el.textContent = `очищено (${data.cleared} записей удалено)`;
+                    setTimeout(refreshTMStatus, 1500);
+                } else {
+                    el.textContent = 'ошибка очистки';
+                }
+            } catch (e) {
+                el.textContent = 'ошибка подключения';
+            }
+        }
+
+        // Auto-load TM stats on page load (safe for scripts at end of body)
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', refreshTMStatus);
+        } else {
+            refreshTMStatus();
+        }
+
+        // Toggle LLM-judge row when QE toggled
+        (function setupJudgeToggle() {
+            const qeCb = document.getElementById('qe');
+            const judgeRow = document.getElementById('llmJudgeRow');
+            if (!qeCb || !judgeRow) return;
+            const sync = () => { judgeRow.style.display = qeCb.checked ? 'block' : 'none'; };
+            qeCb.addEventListener('change', sync);
+            sync();
+        })();
+
         // --- Build form params (shared between single and batch) ---
         function buildFormData(file) {
             const formData = new FormData();
@@ -974,6 +1022,13 @@
             if (document.getElementById('auto_glossary').checked) formData.append('auto_glossary', 'on');
             if (document.getElementById('qe').checked) formData.append('qe', 'on');
             formData.append('save_dir', document.getElementById('save_dir').value.trim());
+            // New 2026-04-19 flags
+            formData.append('use_tm', document.getElementById('use_tm').checked ? 'on' : 'off');
+            formData.append('use_llm_judge', document.getElementById('use_llm_judge').checked ? 'on' : 'off');
+            if (document.getElementById('use_back_translation').checked) {
+                formData.append('use_back_translation', 'on');
+            }
+            formData.append('aux_model', document.getElementById('aux_model').value.trim());
             return formData;
         }
 
@@ -999,6 +1054,10 @@
                 context_analysis: document.getElementById('context_analysis').checked,
                 auto_glossary: document.getElementById('auto_glossary').checked,
                 qe: document.getElementById('qe').checked,
+                use_tm: document.getElementById('use_tm').checked,
+                use_llm_judge: document.getElementById('use_llm_judge').checked,
+                use_back_translation: document.getElementById('use_back_translation').checked,
+                aux_model: document.getElementById('aux_model').value.trim(),
             };
         }
 
