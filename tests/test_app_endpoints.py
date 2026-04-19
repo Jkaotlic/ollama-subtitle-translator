@@ -243,3 +243,162 @@ class TestExtractAndTranslate:
         assert task["use_llm_judge"] is True
         assert task["use_back_translation"] is False
         assert task["aux_model"] == ""
+
+
+class TestTranslateWorker:
+    def test_worker_respects_use_tm_false(self, tmp_path, monkeypatch):
+        """When use_tm=False, Translator is constructed with tm_path=None, aux_model forwarded."""
+        from app import translate_worker, tasks_lock, tasks
+
+        srt_path = tmp_path / "in.srt"
+        srt_path.write_text("1\n00:00:01,000 --> 00:00:02,000\nHi\n\n", encoding="utf-8")
+        out_path = tmp_path / "out.srt"
+
+        captured = {}
+
+        class FakeTranslator:
+            def __init__(self, *args, **kwargs):
+                captured.update(kwargs)
+                self._tm = None  # tm_path was None
+            def generate_glossary(self, texts): return {}
+            def analyze_context(self, texts): return ""
+            def translate_batch(self, texts, **kwargs): return list(texts)
+            def estimate_quality(self, o, t, **kwargs):
+                captured["use_llm_judge_arg"] = kwargs.get("use_llm_judge")
+                return [5] * len(o)
+            def retranslate_weak(self, o, t, s, **kwargs):
+                captured["use_back_translation_arg"] = kwargs.get("use_back_translation")
+                return list(t)
+            def close(self): pass
+            glossary = {}
+
+        monkeypatch.setattr("translate_srt.Translator", FakeTranslator)
+
+        task_id = "test-worker-tm-off"
+        with tasks_lock:
+            tasks[task_id] = {
+                "status": "starting", "current": 0, "total": 0,
+                "output_name": "out.srt", "save_dir": "",
+                "created_at": 0, "temperature": 0.0, "chunk_size": 1000,
+                "context_window": 3, "max_cps": 0, "two_pass_enabled": False,
+                "use_tm": False, "use_llm_judge": False,
+                "use_back_translation": True, "aux_model": "llama3:8b",
+            }
+
+        try:
+            translate_worker(
+                task_id, srt_path, out_path,
+                "Russian", "gemma4:e12b",
+                use_tm=False, use_llm_judge=False,
+                use_back_translation=True, aux_model="llama3:8b",
+                context_analysis=False, qe=True, auto_glossary=False,
+            )
+            assert captured.get("tm_path") is None
+            assert captured.get("aux_model") == "llama3:8b"
+            assert captured.get("use_llm_judge_arg") is False
+            # retranslate_weak was called only if there were weak segs; scores=5 means
+            # weak_count=0, so retranslate_weak won't be called. Tolerate either.
+        finally:
+            with tasks_lock:
+                tasks.pop(task_id, None)
+
+    def test_worker_writes_duration_and_tm_hits(self, tmp_path, monkeypatch):
+        """TM delta and duration are written to task snapshot on success."""
+        from app import translate_worker, tasks_lock, tasks
+
+        srt_path = tmp_path / "in.srt"
+        srt_path.write_text("1\n00:00:01,000 --> 00:00:02,000\nHi\n\n", encoding="utf-8")
+        out_path = tmp_path / "out.srt"
+
+        # Sequence: before = 5 entries, after = 8 entries -> delta = 3
+        tm_stats_seq = [{"entries": 5}, {"entries": 8}]
+
+        class FakeTM:
+            def __init__(self, *a, **k): pass
+            def stats(self):
+                return tm_stats_seq.pop(0) if tm_stats_seq else {"entries": 0}
+            def prune(self): pass
+            def close(self): pass
+
+        class FakeTranslator:
+            def __init__(self, **kwargs):
+                self._tm = FakeTM() if kwargs.get("tm_path") else None
+            def generate_glossary(self, texts): return {}
+            def analyze_context(self, texts): return ""
+            def translate_batch(self, texts, **kwargs): return list(texts)
+            def estimate_quality(self, o, t, **kwargs): return [5] * len(o)
+            def retranslate_weak(self, o, t, s, **kwargs): return list(t)
+            def close(self): pass
+            glossary = {}
+
+        monkeypatch.setattr("translate_srt.Translator", FakeTranslator)
+
+        task_id = "test-worker-delta"
+        with tasks_lock:
+            tasks[task_id] = {
+                "status": "starting", "current": 0, "total": 0,
+                "output_name": "out.srt", "save_dir": "",
+                "created_at": 0, "temperature": 0.0, "chunk_size": 1000,
+                "context_window": 3, "max_cps": 0, "two_pass_enabled": False,
+                "use_tm": True, "use_llm_judge": True,
+                "use_back_translation": False, "aux_model": "",
+            }
+
+        try:
+            translate_worker(
+                task_id, srt_path, out_path, "Russian", "gemma4:e12b",
+                use_tm=True, context_analysis=False, qe=False, auto_glossary=False,
+            )
+            with tasks_lock:
+                task = tasks[task_id]
+            assert task["status"] == "done"
+            assert "duration_seconds" in task
+            assert task.get("tm_hits_delta") == 3
+        finally:
+            with tasks_lock:
+                tasks.pop(task_id, None)
+
+    def test_worker_no_tm_hits_when_disabled(self, tmp_path, monkeypatch):
+        """When use_tm=False, tm_hits_delta must not appear in task snapshot."""
+        from app import translate_worker, tasks_lock, tasks
+
+        srt_path = tmp_path / "in.srt"
+        srt_path.write_text("1\n00:00:01,000 --> 00:00:02,000\nHi\n\n", encoding="utf-8")
+        out_path = tmp_path / "out.srt"
+
+        class FakeTranslator:
+            def __init__(self, **kwargs): self._tm = None
+            def generate_glossary(self, texts): return {}
+            def analyze_context(self, texts): return ""
+            def translate_batch(self, texts, **kwargs): return list(texts)
+            def estimate_quality(self, o, t, **kwargs): return [5] * len(o)
+            def retranslate_weak(self, o, t, s, **kwargs): return list(t)
+            def close(self): pass
+            glossary = {}
+
+        monkeypatch.setattr("translate_srt.Translator", FakeTranslator)
+
+        task_id = "test-worker-no-tm"
+        with tasks_lock:
+            tasks[task_id] = {
+                "status": "starting", "current": 0, "total": 0,
+                "output_name": "out.srt", "save_dir": "",
+                "created_at": 0, "temperature": 0.0, "chunk_size": 1000,
+                "context_window": 3, "max_cps": 0, "two_pass_enabled": False,
+                "use_tm": False, "use_llm_judge": True,
+                "use_back_translation": False, "aux_model": "",
+            }
+
+        try:
+            translate_worker(
+                task_id, srt_path, out_path, "Russian", "gemma4:e12b",
+                use_tm=False, context_analysis=False, qe=False, auto_glossary=False,
+            )
+            with tasks_lock:
+                task = tasks[task_id]
+            assert task["status"] == "done"
+            assert "tm_hits_delta" not in task
+            assert "duration_seconds" in task
+        finally:
+            with tasks_lock:
+                tasks.pop(task_id, None)

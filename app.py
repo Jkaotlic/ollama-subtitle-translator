@@ -229,14 +229,23 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         chunk_size = task_snapshot.get("chunk_size", 1000)
         context_window = task_snapshot.get("context_window", 3)
 
-        tm_path = _tm_db_path()
-        translator = Translator(
+        tm_entries_before = 0
+        tm_path = _tm_db_path() if use_tm else None
+        translator_kwargs = dict(
             model=model, target_lang=target_lang, ollama_url=OLLAMA_URL,
             context=context, temperature=temp, source_lang=source_lang,
             two_pass=two_pass, review_model=review_model,
             glossary=glossary, context_window=int(context_window),
             genre=genre, tm_path=tm_path,
         )
+        if aux_model:
+            translator_kwargs["aux_model"] = aux_model
+        translator = Translator(**translator_kwargs)
+        if translator._tm is not None:
+            try:
+                tm_entries_before = translator._tm.stats().get("entries", 0)
+            except Exception:
+                tm_entries_before = 0
 
         max_cps = task_snapshot.get("max_cps", 0)
 
@@ -288,12 +297,17 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
             with tasks_lock:
                 tasks[task_id]["phase"] = "quality_check"
                 tasks[task_id]["current"] = 0
-            scores = translator.estimate_quality(texts, translated_texts)
+            scores = translator.estimate_quality(
+                texts, translated_texts, use_llm_judge=use_llm_judge,
+            )
             weak_count = sum(1 for s in scores if s < 3)
             with tasks_lock:
                 tasks[task_id]["qe_weak_count"] = weak_count
             if weak_count > 0:
-                translated_texts = translator.retranslate_weak(texts, translated_texts, scores)
+                translated_texts = translator.retranslate_weak(
+                    texts, translated_texts, scores,
+                    use_back_translation=use_back_translation,
+                )
 
         # Validate reading speed (CPS)
         if max_cps > 0:
@@ -314,9 +328,20 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
         # Сохраняем (единая логика из translate_srt.py)
         write_srt(translated_blocks, output_path, "utf-8")
 
+        tm_hits_delta = 0
+        if translator._tm is not None:
+            try:
+                tm_hits_delta = translator._tm.stats().get("entries", 0) - tm_entries_before
+            except Exception:
+                pass
+        duration_seconds = time.time() - t0
+
         with tasks_lock:
             tasks[task_id]["output_file"] = str(output_path)
             tasks[task_id]["completed_at"] = time.time()
+            tasks[task_id]["duration_seconds"] = duration_seconds
+            if use_tm:
+                tasks[task_id]["tm_hits_delta"] = tm_hits_delta
             tasks[task_id]["status"] = "done"  # set last to avoid race with /progress poll
             save_dir = tasks[task_id].get("save_dir", "")
             output_name = tasks[task_id].get("output_name", "")
