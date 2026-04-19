@@ -8,8 +8,8 @@
 
 | # | Улучшение | Файл |
 |---|---|---|
-| 1 | Дефолт → `gemma4:e12b` (140 языков, reasoning) | translate_srt.py, app.py, index.html |
-| 2 | AUX → `qwen3.5:8b` (был 4b) | translate_srt.py |
+| 1 | Дефолт → `gemma4:e4b` (140 языков, reasoning, efficient) | translate_srt.py, app.py, index.html |
+| 2 | AUX → `qwen3.5:9b` (был 4b) | translate_srt.py |
 | 3 | UI пресеты: Gemma 4 (3 размера), Qwen 3.5, Hunyuan-MT, Llama 4 Scout | index.html |
 | 4 | **`num_ctx: 8192`** в Ollama options (критично — убирает дефолтный 2048 truncation) | translate_srt.py |
 | 5 | Упрощён `_is_translation_only_model` — Gemma/Qwen теперь general-purpose, без aux-костыля | translate_srt.py |

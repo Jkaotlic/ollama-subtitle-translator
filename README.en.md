@@ -42,8 +42,8 @@
 
 ```bash
 ollama serve
-ollama pull gemma4:e12b      # Main translation model
-ollama pull qwen3.5:8b        # Auxiliary (glossary, QE, analysis)
+ollama pull gemma4:e4b       # Main translation model
+ollama pull qwen3.5:9b       # Auxiliary (glossary, QE, analysis)
 ```
 
 ### 2. Install & Run
@@ -68,11 +68,11 @@ python translate_srt.py series.srt --genre drama    # With genre preset
 
 | Model | Size | VRAM | Best for | Ollama tag |
 |---|---|---|---|---|
-| **Gemma 4 12B** ⭐ | 8 GB | ~16 GB | General use, recommended default | `gemma4:e12b` |
-| **Gemma 4 4B** | 3 GB | ~8 GB | Weaker hardware, still 140 languages | `gemma4:e4b` |
-| **Gemma 4 27B** | 17 GB | ~24 GB | Maximum Gemma quality | `gemma4:e27b` |
-| **Qwen 3.5 8B** | 5 GB | ~12 GB | Excellent for CJK, 201 languages | `qwen3.5:8b` |
-| **Qwen 3.5 32B** | 20 GB | ~24 GB | Top-tier for complex content, sarcasm, idioms | `qwen3.5:32b` |
+| **Gemma 4 4B** ⭐ | 3 GB | ~8 GB | Recommended: 140 languages, efficient, runs on modest hardware | `gemma4:e4b` |
+| **Gemma 4 26B** | 17 GB | ~24 GB | Maximum Gemma quality | `gemma4:26b` |
+| **Gemma 4 31B** | 20 GB | ~32 GB | Top Gemma, server-grade hardware | `gemma4:31b` |
+| **Qwen 3.5 9B** | 5 GB | ~12 GB | Excellent for CJK, 201 languages | `qwen3.5:9b` |
+| **Qwen 3.5 27B** | 17 GB | ~24 GB | Top-tier for complex content, sarcasm, idioms | `qwen3.5:27b` |
 | **Hunyuan-MT 7B** | 4 GB | ~10 GB | Translation-specialized (Tencent) | `hunyuan-mt:7b` |
 | **Llama 4 Scout** | big | server-grade | **10M context** — whole movie in a single prompt | `llama4:scout` |
 
@@ -141,7 +141,7 @@ python translate_srt.py <file.srt> [options]
 | `-l`, `--lang` | Target language | `Russian` |
 | `-s`, `--source-lang` | Source language (auto-detect if omitted) | — |
 | `-o`, `--out` | Output file | `<input>.<code>.srt` |
-| `-m`, `--model` | Ollama model | `gemma4:e12b` |
+| `-m`, `--model` | Ollama model | `gemma4:e4b` |
 | `-c`, `--context` | Free-form context hint | — |
 | `-g`, `--glossary` | Glossary: `"Tony=Тони, SHIELD=Щ.И.Т."` or path to file | — |
 | `--genre` | `comedy` / `drama` / `anime` / `documentary` / `action` / `horror` | — |
@@ -150,7 +150,7 @@ python translate_srt.py <file.srt> [options]
 | `--max-cps` | Max chars per second (reading speed check) | `0` (off) |
 | `--two-pass` | Translate + review pass | off |
 | `--review-model` | Model for review pass | same as `--model` |
-| `--aux-model` | Auxiliary model for analysis / glossary / QE | `qwen3.5:8b` |
+| `--aux-model` | Auxiliary model for analysis / glossary / QE | `qwen3.5:9b` |
 | `--no-context-analysis` | Skip pre-translation analysis | — |
 | `--no-qe` | Skip quality estimation + retranslate | — |
 | `--no-auto-glossary` | Skip auto-glossary generation | — |

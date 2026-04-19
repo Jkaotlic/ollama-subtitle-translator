@@ -9,7 +9,7 @@ Hunyuan-MT, Llama 4 Scout; + legacy translation-only модели (NLLB, ALMA, T
 
 Установка:
   1. Установить Ollama: https://ollama.com/download
-  2. ollama pull gemma4:e12b
+  2. ollama pull gemma4:e4b
   3. pip install requests
 
 Примеры:
@@ -555,9 +555,9 @@ class Translator:
     """Переводчик через Ollama + Translating Gemma"""
 
     # Default auxiliary model for analysis/glossary/QE (general-purpose, reasoning-capable)
-    DEFAULT_AUX_MODEL = "qwen3.5:8b"
+    DEFAULT_AUX_MODEL = "qwen3.5:9b"
 
-    def __init__(self, model: str = "gemma4:e12b", target_lang: str = "Russian",
+    def __init__(self, model: str = "gemma4:e4b", target_lang: str = "Russian",
                  ollama_url: str = "http://127.0.0.1:11434", context: str = "",
                  temperature: float = 0.0, source_lang: str = "",
                  two_pass: bool = False, review_model: str = "",
@@ -1847,7 +1847,7 @@ def validate_reading_speed(blocks: List[SrtBlock], translated_texts: List[str],
 
 
 def translate_srt(input_path: Path, output_path: Path, target_lang: str = "Russian",
-                  model: str = "gemma4:e12b",
+                  model: str = "gemma4:e4b",
                   context: str = "", source_lang: str = "",
                   two_pass: bool = False, review_model: str = "",
                   chunk_size: int = 1000,
@@ -1974,7 +1974,7 @@ def main():
     parser.add_argument("input", type=Path, help="Входной SRT файл")
     parser.add_argument("--out", "-o", type=Path, default=None, help="Выходной файл")
     parser.add_argument("--lang", "-l", type=str, default="Russian", help="Целевой язык")
-    parser.add_argument("--model", "-m", type=str, default="gemma4:e12b", help="Модель Ollama для перевода (рекомендуется: gemma4:e12b, qwen3.5:8b, hunyuan-mt:7b)")
+    parser.add_argument("--model", "-m", type=str, default="gemma4:e4b", help="Модель Ollama для перевода (рекомендуется: gemma4:e4b, gemma4:26b, qwen3.5:9b, hunyuan-mt:7b)")
     parser.add_argument("--chunk-size", type=int, default=1000, help="Макс. символов в одном запросе к модели (по умолчанию 1000)")
     parser.add_argument("--context", "-c", type=str, default="", help="Контекст для перевода (например: 'Сериал о больнице с медицинской терминологией')")
     parser.add_argument("--source-lang", "-s", type=str, default="", help="Исходный язык (например: English). По умолчанию — автоопределение")

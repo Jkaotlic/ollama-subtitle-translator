@@ -431,7 +431,7 @@ def translate():
         return jsonify({"error": "SRT файл слишком большой (макс 100MB)"}), 413
 
     target_lang = request.form.get("lang", "Russian")
-    model = request.form.get("model", "gemma4:e12b")
+    model = request.form.get("model", "gemma4:e4b")
     context = request.form.get("context", "")
     source_lang = request.form.get("source_lang", "")
     two_pass = request.form.get("two_pass", "") == "on"
@@ -539,7 +539,7 @@ def check_model():
             return jsonify({"exists": False, "error": "Ollama не отвечает"}), 502
         available = [m["name"] for m in resp.json().get("models", [])]
         # Exact-match check — substring matches caused false-positives
-        # (e.g. "gemma4:e12b" matching "gemma4:e12b-instruct-q4")
+        # (e.g. "gemma4:e4b" matching "gemma4:e4b-instruct-q4")
         if model_name == "__list_all__":
             exists = False
         else:
@@ -743,7 +743,7 @@ def extract_and_translate():
     video_path = data.get("path", "").strip()
     sub_index = data.get("sub_index")
     target_lang = data.get("lang", "Russian")
-    model = data.get("model", "gemma4:e12b")
+    model = data.get("model", "gemma4:e4b")
     context = data.get("context", "")
     source_lang = data.get("source_lang", "")
     two_pass = data.get("two_pass", False)
