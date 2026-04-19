@@ -68,7 +68,7 @@ back-translation, aux_model и ряд security-валидаций. В UI эти 
 - `/tm/stats` (GET) → `{"entries": int, "size_bytes": int}`. Использует
   `TranslationMemory.stats()` (метод уже есть).
 - `/tm/clear` (POST) → `{"ok": true, "cleared": int}`. Метод `TranslationMemory.clear()`
-  нужно добавить (один `DELETE FROM translations` + `VACUUM`).
+  нужно добавить (`DELETE FROM tm` + `VACUUM`, таблица называется `tm`).
 - `/translate` и `/extract_and_translate`: новое поле `use_tm` (form/JSON, default `true`).
   Worker передаёт `tm_path=None` если выключено.
 
