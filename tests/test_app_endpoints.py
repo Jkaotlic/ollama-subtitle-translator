@@ -56,6 +56,43 @@ class TestTmEndpoints:
         assert data["ok"] is True
         assert data["cleared"] == 0
 
+    def test_tm_clear_409_when_tm_active_translation(self, client, tmp_path):
+        """While a task with use_tm=True is running, /tm/clear returns 409."""
+        # Inject an active task using TM
+        import app as app_module
+        with app_module.tasks_lock:
+            app_module.tasks["busy-task"] = {
+                "status": "running",
+                "use_tm": True,
+                "created_at": 0,
+            }
+        try:
+            resp = client.post("/tm/clear")
+            assert resp.status_code == 409
+            data = resp.get_json()
+            assert data["ok"] is False
+            assert "занят" in data["error"].lower() or "busy" in data["error"].lower()
+        finally:
+            with app_module.tasks_lock:
+                app_module.tasks.pop("busy-task", None)
+
+    def test_tm_clear_allowed_when_task_not_using_tm(self, client, tmp_path):
+        """A running task WITHOUT TM shouldn't block /tm/clear."""
+        import app as app_module
+        with app_module.tasks_lock:
+            app_module.tasks["non-tm-task"] = {
+                "status": "running",
+                "use_tm": False,
+                "created_at": 0,
+            }
+        try:
+            resp = client.post("/tm/clear")
+            assert resp.status_code == 200
+            assert resp.get_json()["ok"] is True
+        finally:
+            with app_module.tasks_lock:
+                app_module.tasks.pop("non-tm-task", None)
+
 
 class TestCheckModel:
     def test_exact_match_positive(self, client, monkeypatch):
@@ -244,6 +281,33 @@ class TestExtractAndTranslate:
         assert task["use_back_translation"] is False
         assert task["aux_model"] == ""
 
+    def test_json_string_false_treated_as_false(self, client, monkeypatch, tmp_path):
+        """Regression: JSON payload with string 'false' must not be truthy."""
+        monkeypatch.setattr(app_module.executor, "submit", lambda *a, **k: MagicMock())
+        fake_video = tmp_path / "movie.mkv"
+        fake_video.write_bytes(b"fake")
+        import video_utils
+        monkeypatch.setattr(video_utils, "resolve_video_path", lambda p: str(fake_video))
+        monkeypatch.setattr(video_utils, "extract_subtitle_track",
+                            lambda resolved, idx, dest: Path(dest).write_text(
+                                "1\n00:00:01,000 --> 00:00:02,000\nHi\n\n",
+                                encoding="utf-8",
+                            ))
+        resp = client.post("/extract_and_translate", json={
+            "path": str(fake_video),
+            "sub_index": 0,
+            "lang": "Russian",
+            "model": "gemma4:e12b",
+            "use_tm": "false",          # string, not bool
+            "use_back_translation": "false",
+        })
+        assert resp.status_code == 200
+        task_id = resp.get_json()["task_id"]
+        with app_module.tasks_lock:
+            task = app_module.tasks[task_id]
+        assert task["use_tm"] is False
+        assert task["use_back_translation"] is False
+
 
 class TestTranslateWorker:
     def test_worker_respects_use_tm_false(self, tmp_path, monkeypatch):
@@ -402,3 +466,37 @@ class TestTranslateWorker:
         finally:
             with tasks_lock:
                 tasks.pop(task_id, None)
+
+
+class TestParseFlag:
+    def test_parse_flag_none_returns_default(self):
+        from app import _parse_flag
+        assert _parse_flag(None, default=True) is True
+        assert _parse_flag(None, default=False) is False
+
+    def test_parse_flag_bool_passes_through(self):
+        from app import _parse_flag
+        assert _parse_flag(True, default=False) is True
+        assert _parse_flag(False, default=True) is False
+
+    def test_parse_flag_string_false_is_false(self):
+        """Fixes the bool('false') == True pitfall."""
+        from app import _parse_flag
+        assert _parse_flag("false", default=True) is False
+        assert _parse_flag("off", default=True) is False
+        assert _parse_flag("0", default=True) is False
+
+    def test_parse_flag_string_true_is_true(self):
+        from app import _parse_flag
+        assert _parse_flag("true", default=False) is True
+        assert _parse_flag("on", default=False) is True
+        assert _parse_flag("1", default=False) is True
+
+    def test_parse_flag_empty_string_is_false(self):
+        from app import _parse_flag
+        assert _parse_flag("", default=True) is False
+
+    def test_parse_flag_unknown_returns_default(self):
+        from app import _parse_flag
+        assert _parse_flag("maybe", default=True) is True
+        assert _parse_flag("maybe", default=False) is False
