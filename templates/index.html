@@ -260,6 +260,7 @@
             <a href="#" onclick="toggleAdvanced(); return false;" id="advancedToggleLink">Расширенные настройки ▼</a>
         </div>
         <div class="advanced-panel" id="advancedPanel">
+            <h4 id="advSectionContent" style="margin:0 0 12px 0; color:#a3bffa; font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">Контент</h4>
             <div style="display:flex; gap:12px;">
                 <div style="flex:1;">
                     <label for="source_lang">Язык оригинала:</label>
@@ -295,6 +296,9 @@
                 Формат: Оригинал = Перевод (по одной паре на строку). Дополняет авто-глоссарий.
             </div>
 
+            <div style="border-top:1px solid #2d3748; padding-top:16px;">
+            <h4 id="advSectionModel" style="margin:0 0 12px 0; color:#a3bffa; font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">Параметры модели</h4>
+
             <div style="display:flex; gap:12px; align-items:end;">
                 <div style="flex:1;">
                     <label for="temperature">Temperature:</label>
@@ -314,18 +318,28 @@
                 </div>
             </div>
 
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:10px; margin:12px 0;">
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
                     <input type="checkbox" id="two_pass" style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
                     Двухпроходный перевод (translate + review)
                 </label>
             </div>
-            <div id="reviewModelRow" style="display:none; margin-bottom:16px;">
+            <div id="reviewModelRow" style="display:none; margin-bottom:12px;">
                 <label for="review_model">Модель для review:</label>
                 <input id="review_model" type="text" placeholder="По умолчанию — та же модель">
             </div>
 
-            <div style="display:flex; flex-wrap:wrap; gap:10px 20px; margin-bottom:4px;">
+            <label for="aux_model">Вспомогательная модель (анализ / глоссарий / QE):</label>
+            <input id="aux_model" type="text" placeholder="qwen3.5:8b (по умолчанию)" style="margin-bottom:4px;">
+            <div style="font-size:11px; color:#718096; margin-bottom:16px;">
+                Пусто = автоматически (qwen3.5:8b для translation-only моделей, сама модель — для general-purpose).
+            </div>
+            </div>
+
+            <div style="border-top:1px solid #2d3748; padding-top:16px;">
+            <h4 id="advSectionQuality" style="margin:0 0 12px 0; color:#a3bffa; font-size:13px; text-transform:uppercase; letter-spacing:0.5px;">Качество и память</h4>
+
+            <div style="display:flex; flex-wrap:wrap; gap:10px 20px; margin-bottom:10px;">
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
                     <input type="checkbox" id="context_analysis" checked style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
                     Анализ контента
@@ -334,10 +348,38 @@
                     <input type="checkbox" id="auto_glossary" checked style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
                     Авто-глоссарий
                 </label>
+            </div>
+
+            <div style="margin-bottom:10px;">
                 <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
                     <input type="checkbox" id="qe" checked style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
                     Проверка качества (QE)
                 </label>
+                <div id="llmJudgeRow" style="margin:6px 0 0 26px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:13px; color:#a0aec0;">
+                        <input type="checkbox" id="use_llm_judge" checked style="width:16px; height:16px; accent-color:#667eea; cursor:pointer;">
+                        LLM-оценка качества (точнее, медленнее — использует aux-модель)
+                    </label>
+                </div>
+            </div>
+
+            <div style="margin-bottom:10px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                    <input type="checkbox" id="use_back_translation" style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
+                    Контроль обратного перевода (перепроверяет смысл слабых сегментов, +время)
+                </label>
+            </div>
+
+            <div style="margin-bottom:4px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin:0;">
+                    <input type="checkbox" id="use_tm" checked style="width:18px; height:18px; accent-color:#667eea; cursor:pointer;">
+                    Translation Memory (персистентный кэш между сеансами)
+                </label>
+                <div style="margin:4px 0 0 26px; font-size:12px; color:#a0aec0;">
+                    <span id="tmStatus">загрузка...</span>
+                    <a href="#" id="tmClearBtn" onclick="clearTM(); return false;" style="margin-left:10px; color:#fc8181; text-decoration:none;">очистить</a>
+                </div>
+            </div>
             </div>
         </div>
 
