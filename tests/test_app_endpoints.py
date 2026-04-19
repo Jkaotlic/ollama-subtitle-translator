@@ -1,4 +1,5 @@
 """Tests for Flask app.py endpoints."""
+import io
 import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -92,3 +93,91 @@ class TestCheckModel:
         data = resp.get_json()
         assert "gemma4:e12b" in data["available"]
         assert "qwen3.5:8b" in data["available"]
+
+
+class TestTranslateEndpoint:
+    def test_new_flags_stored_in_task_snapshot(self, client, monkeypatch):
+        # Stub executor.submit so worker never actually runs
+        monkeypatch.setattr(app_module.executor, "submit", lambda *a, **k: MagicMock())
+        srt = b"1\n00:00:01,000 --> 00:00:02,000\nHi\n\n"
+        resp = client.post(
+            "/translate",
+            data={
+                "file": (io.BytesIO(srt), "test.srt"),
+                "lang": "Russian",
+                "model": "gemma4:e12b",
+                "use_tm": "off",
+                "use_llm_judge": "off",
+                "use_back_translation": "on",
+                "aux_model": "llama3:8b",
+            },
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200
+        task_id = resp.get_json()["task_id"]
+        with app_module.tasks_lock:
+            task = app_module.tasks[task_id]
+        assert task["use_tm"] is False
+        assert task["use_llm_judge"] is False
+        assert task["use_back_translation"] is True
+        assert task["aux_model"] == "llama3:8b"
+
+    def test_save_dir_rejected_returns_warning(self, client, monkeypatch, tmp_path):
+        monkeypatch.setattr(app_module.executor, "submit", lambda *a, **k: MagicMock())
+        srt = b"1\n00:00:01,000 --> 00:00:02,000\nHi\n\n"
+        resp = client.post(
+            "/translate",
+            data={
+                "file": (io.BytesIO(srt), "test.srt"),
+                "lang": "Russian",
+                "model": "gemma4:e12b",
+                "save_dir": "C:\\Windows\\System32",  # not in allow-list
+            },
+            content_type="multipart/form-data",
+        )
+        data = resp.get_json()
+        assert "task_id" in data
+        assert "warning" in data
+        assert "save_dir" in data["warning"].lower()
+
+    def test_save_dir_valid_no_warning(self, client, monkeypatch, tmp_path):
+        # Force allow-list to accept tmp_path (portable across machines).
+        monkeypatch.setattr(app_module.executor, "submit", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(app_module, "_safe_base_dirs",
+                            lambda extra=None: [tmp_path.resolve()])
+        srt = b"1\n00:00:01,000 --> 00:00:02,000\nHi\n\n"
+        resp = client.post(
+            "/translate",
+            data={
+                "file": (io.BytesIO(srt), "test.srt"),
+                "lang": "Russian",
+                "model": "gemma4:e12b",
+                "save_dir": str(tmp_path),
+            },
+            content_type="multipart/form-data",
+        )
+        data = resp.get_json()
+        assert "warning" not in data
+
+    def test_default_flags_still_work(self, client, monkeypatch):
+        """Backwards compat: existing clients that don't send the new fields."""
+        monkeypatch.setattr(app_module.executor, "submit", lambda *a, **k: MagicMock())
+        srt = b"1\n00:00:01,000 --> 00:00:02,000\nHi\n\n"
+        resp = client.post(
+            "/translate",
+            data={
+                "file": (io.BytesIO(srt), "test.srt"),
+                "lang": "Russian",
+                "model": "gemma4:e12b",
+            },
+            content_type="multipart/form-data",
+        )
+        assert resp.status_code == 200
+        task_id = resp.get_json()["task_id"]
+        with app_module.tasks_lock:
+            task = app_module.tasks[task_id]
+        # Defaults: TM on, LLM-judge on, back-translation off, aux-model empty
+        assert task["use_tm"] is True
+        assert task["use_llm_judge"] is True
+        assert task["use_back_translation"] is False
+        assert task["aux_model"] == ""

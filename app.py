@@ -192,7 +192,11 @@ def translate_worker(task_id: str, input_path: Path, output_path: Path,
                      genre: str = "",
                      context_analysis: bool = True,
                      qe: bool = True,
-                     auto_glossary: bool = True):
+                     auto_glossary: bool = True,
+                     use_tm: bool = True,
+                     use_llm_judge: bool = True,
+                     use_back_translation: bool = False,
+                     aux_model: str = ""):
     """Фоновый worker для перевода."""
     from translate_srt import Translator, read_srt_file, parse_srt, write_srt, SrtBlock
 
@@ -392,6 +396,13 @@ def translate():
     qe = request.form.get("qe", "") == "on"
     auto_glossary = request.form.get("auto_glossary", "") == "on"
 
+    # New flags (2026-04-19 UI sync)
+    # Defaults match pre-upgrade behavior: TM on, LLM-judge on, back-translation off, aux-model auto.
+    use_tm = request.form.get("use_tm", "on") != "off"
+    use_llm_judge = request.form.get("use_llm_judge", "on") != "off"
+    use_back_translation = request.form.get("use_back_translation", "") == "on"
+    aux_model = request.form.get("aux_model", "").strip()
+
     from translate_srt import parse_glossary
     glossary = parse_glossary(glossary_raw) if glossary_raw.strip() else {}
 
@@ -413,8 +424,14 @@ def translate():
     max_cps = request.form.get("max_cps")
     save_dir_raw = request.form.get("save_dir", "").strip()
     safe_save_dir = _validate_save_dir(save_dir_raw) if save_dir_raw else None
+    save_dir_warning: Optional[str] = None
     if save_dir_raw and safe_save_dir is None:
         logger.warning("task=%s rejected save_dir=%s", task_id, save_dir_raw)
+        save_dir_warning = (
+            "save_dir отклонён: путь не в разрешённых директориях "
+            "(UPLOAD_DIR, ~/Downloads, ~/Videos, ~/Desktop). "
+            "Перевод будет скачиваем только через кнопку."
+        )
     save_dir = str(safe_save_dir) if safe_save_dir is not None else ""
 
     with tasks_lock:
@@ -430,6 +447,10 @@ def translate():
             "context_window": int(context_window) if context_window is not None and context_window != "" else 3,
             "max_cps": float(max_cps) if max_cps is not None and max_cps != "" else 0,
             "two_pass_enabled": two_pass,
+            "use_tm": use_tm,
+            "use_llm_judge": use_llm_judge,
+            "use_back_translation": use_back_translation,
+            "aux_model": aux_model,
         }
 
     # Запускаем фоновую задачу в пуле воркеров
@@ -437,11 +458,17 @@ def translate():
                              target_lang, model, context, source_lang, two_pass, review_model,
                              glossary=glossary, genre=genre,
                              context_analysis=context_analysis, qe=qe,
-                             auto_glossary=auto_glossary)
+                             auto_glossary=auto_glossary,
+                             use_tm=use_tm, use_llm_judge=use_llm_judge,
+                             use_back_translation=use_back_translation,
+                             aux_model=aux_model)
     with tasks_lock:
         tasks[task_id]["future"] = future
 
-    return jsonify({"task_id": task_id})
+    response = {"task_id": task_id}
+    if save_dir_warning:
+        response["warning"] = save_dir_warning
+    return jsonify(response)
 
 
 @app.route("/progress/<task_id>")
